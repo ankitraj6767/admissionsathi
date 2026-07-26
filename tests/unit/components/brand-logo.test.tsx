@@ -24,6 +24,12 @@ describe('BrandLogo', () => {
             'src',
             branding.logoUrl,
         );
+        expect(container.querySelector('img')).toHaveClass(
+            'h-12',
+            'w-12',
+            'rounded-full',
+            'object-cover',
+        );
         expect(screen.getByText('Campus')).toHaveStyle({ color: '#073174' });
         expect(screen.getByText('Guide')).toHaveClass('text-orange');
         expect(screen.getByText('Find your next step')).toHaveStyle({ color: '#667085' });
@@ -48,6 +54,11 @@ describe('BrandLogo', () => {
         fireEvent.error(image!);
 
         expect(container.querySelector('img')).not.toBeInTheDocument();
+        expect(container.querySelector('svg')?.parentElement).toHaveClass(
+            'h-12',
+            'w-12',
+            'rounded-full',
+        );
         expect(screen.getByText('Campus')).toBeInTheDocument();
         expect(screen.getByText('Guide')).toBeInTheDocument();
         expect(screen.getByText('Find your next step')).toBeInTheDocument();

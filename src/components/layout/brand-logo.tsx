@@ -41,14 +41,14 @@ export function BrandLogo({
                     src={assetUrl}
                     alt=""
                     aria-hidden="true"
-                    className="h-10 w-10 shrink-0 rounded-[10px] object-contain"
+                    className="h-12 w-12 shrink-0 rounded-full bg-white object-cover"
                     decoding="async"
                     onError={() => setFailedAsset(assetUrl)}
                 />
             ) : (
-                <span className="relative inline-flex h-10 w-10 shrink-0 items-center justify-center">
-                    <svg viewBox="0 0 44 44" className="h-10 w-10" aria-hidden="true">
-                        <rect x="1.5" y="1.5" width="41" height="41" rx="12" fill={variant === 'light' ? '#EEF4FF' : 'rgba(255,255,255,0.12)'} />
+                <span className="relative inline-flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-full">
+                    <svg viewBox="0 0 44 44" className="h-12 w-12" aria-hidden="true">
+                        <circle cx="22" cy="22" r="20.5" fill={variant === 'light' ? '#EEF4FF' : 'rgba(255,255,255,0.12)'} />
                         <path d="M22 9.5 34 15l-12 5.5L10 15l12-5.5Z" fill={variant === 'light' ? '#073174' : '#FFFFFF'} />
                         <path d="M22 22.6 31 18.5v5.4c0 3.6-3.9 6.6-9 6.6s-9-3-9-6.6v-5.4l9 4.1Z" fill="#FF6B17" />
                         <circle cx="33.4" cy="20.4" r="2" fill="#0AA39A" />
