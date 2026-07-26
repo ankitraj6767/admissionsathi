@@ -1,19 +1,27 @@
 import Link from 'next/link';
+import { faFacebookF } from '@fortawesome/free-brands-svg-icons/faFacebookF';
+import { faInstagram } from '@fortawesome/free-brands-svg-icons/faInstagram';
+import { faLinkedinIn } from '@fortawesome/free-brands-svg-icons/faLinkedinIn';
+import { faTelegram } from '@fortawesome/free-brands-svg-icons/faTelegram';
+import { faXTwitter } from '@fortawesome/free-brands-svg-icons/faXTwitter';
+import { faYoutube } from '@fortawesome/free-brands-svg-icons/faYoutube';
+import type { IconDefinition } from '@fortawesome/free-brands-svg-icons';
 import { Mail, MapPin, Phone } from 'lucide-react';
 import { BrandLogo } from './brand-logo';
 import { NewsletterForm } from '@/components/forms/newsletter-form';
 import { getMenu } from '@/services/navigation.service';
 import { getSettings, readBool, readString } from '@/services/settings.service';
 import { listCities, listStates } from '@/db/repositories/geo.repository';
+import { BrandIcon } from '@/components/ui/brand-icon';
 import { Icon } from '@/components/ui/icon';
 
-const SOCIALS: { key: string; label: string; icon: string }[] = [
-    { key: 'social.facebook', label: 'Facebook', icon: 'Globe' },
-    { key: 'social.instagram', label: 'Instagram', icon: 'Palette' },
-    { key: 'social.youtube', label: 'YouTube', icon: 'Video' },
-    { key: 'social.linkedin', label: 'LinkedIn', icon: 'Briefcase' },
-    { key: 'social.twitter', label: 'X', icon: 'MessageCircle' },
-    { key: 'social.telegram', label: 'Telegram', icon: 'Send' },
+const SOCIALS: { key: string; label: string; icon: IconDefinition }[] = [
+    { key: 'social.facebook', label: 'Facebook', icon: faFacebookF },
+    { key: 'social.instagram', label: 'Instagram', icon: faInstagram },
+    { key: 'social.youtube', label: 'YouTube', icon: faYoutube },
+    { key: 'social.linkedin', label: 'LinkedIn', icon: faLinkedinIn },
+    { key: 'social.twitter', label: 'X', icon: faXTwitter },
+    { key: 'social.telegram', label: 'Telegram', icon: faTelegram },
 ];
 
 /** Full site footer — every column, link and contact detail comes from MongoDB. */
@@ -79,7 +87,7 @@ export async function SiteFooter() {
                                         aria-label={social.label}
                                         className="inline-flex h-9 w-9 items-center justify-center rounded-[10px] border border-white/15 bg-white/5 text-white/80 transition-colors hover:border-orange/60 hover:text-white"
                                     >
-                                        <Icon name={social.icon} className="h-4 w-4" />
+                                        <BrandIcon icon={social.icon} className="h-4 w-4" />
                                     </a>
                                 );
                             })}

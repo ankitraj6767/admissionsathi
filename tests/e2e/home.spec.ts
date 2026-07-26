@@ -21,13 +21,15 @@ test.describe('homepage', () => {
 
         // Exactly one of the two navigation affordances is visible at any width.
         const desktopVisible = await desktopNav.isVisible().catch(() => false);
-        const mobileVisible = await menuButton.isVisible().catch(() => false);
-        expect(desktopVisible || mobileVisible).toBe(true);
-
-        if (mobileVisible) {
+        if (desktopVisible) {
+            await expect(desktopNav).toBeVisible();
+        } else {
+            await expect(menuButton).toBeVisible();
             await menuButton.click();
-            await expect(page.getByRole('navigation', { name: /mobile/i })).toBeVisible();
-            await page.getByRole('button', { name: /close menu/i }).first().click();
+            const mobileDialog = page.getByRole('dialog', { name: /site menu/i });
+            await expect(mobileDialog.getByRole('navigation', { name: /mobile/i })).toBeVisible();
+            await mobileDialog.getByRole('button', { name: /close menu/i }).click();
+            await expect(mobileDialog).toBeHidden();
         }
     });
 
@@ -45,6 +47,28 @@ test.describe('homepage', () => {
     test('hero exposes the search entry point', async ({ page }) => {
         await gotoStable(page, '/');
         await expect(page.getByRole('combobox').first()).toBeVisible();
+    });
+
+    test('footer social links use their matching brand icons', async ({ page }) => {
+        await gotoStable(page, '/');
+
+        const footer = page.locator('footer').first();
+        const socialIcons = [
+            ['Facebook', 'facebook-f'],
+            ['Instagram', 'instagram'],
+            ['YouTube', 'youtube'],
+            ['LinkedIn', 'linkedin-in'],
+            ['X', 'x-twitter'],
+            ['Telegram', 'telegram'],
+        ] as const;
+
+        for (const [label, iconName] of socialIcons) {
+            const link = footer.getByRole('link', { name: label, exact: true });
+            await expect(link, `${label} footer link`).toHaveCount(1);
+            await expect(link.locator(`[data-brand-icon="${iconName}"]`), `${label} brand icon`).toHaveCount(1);
+            await expect(link).toHaveAttribute('target', '_blank');
+            await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+        }
     });
 
     for (const width of [360, 390, 768, 1280]) {
