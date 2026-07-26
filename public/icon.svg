@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Admission Sathi">
+  <rect width="64" height="64" rx="14" fill="#073174" />
+  <path d="M32 16 12 25l20 9 20-9-20-9Z" fill="#FFFFFF" />
+  <path d="M20 30.5V39c0 3.6 5.4 6.5 12 6.5S44 42.6 44 39v-8.5l-12 5.4-12-5.4Z" fill="#FF6B17" />
+  <path d="M50 27v11a2 2 0 1 1-4 0V27l2-1 2 1Z" fill="#FFFFFF" />
+</svg>

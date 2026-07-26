@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 420" fill="none" role="img" aria-label="Illustration of three students on a college campus">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#EEF4FF"/>
+      <stop offset="1" stop-color="#F5F8FD" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="jacket" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0F3D8C"/>
+      <stop offset="1" stop-color="#073174"/>
+    </linearGradient>
+    <linearGradient id="jacket2" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2A5BBD"/>
+      <stop offset="1" stop-color="#164496"/>
+    </linearGradient>
+    <linearGradient id="kurta" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFF2E8"/>
+      <stop offset="1" stop-color="#FFD9BB"/>
+    </linearGradient>
+  </defs>
+
+  <!-- campus backdrop -->
+  <rect x="0" y="0" width="520" height="420" fill="url(#sky)"/>
+  <g opacity="0.5" stroke="#B9CDF6" stroke-width="2" fill="none">
+    <path d="M60 300V190l52-34 52 34v110"/>
+    <path d="M112 156v-22"/>
+    <rect x="86" y="212" width="22" height="26" rx="3"/>
+    <rect x="122" y="212" width="22" height="26" rx="3"/>
+    <path d="M356 300V196h104v104"/>
+    <path d="M376 220h20v22h-20zM422 220h20v22h-20zM376 258h20v24h-20zM422 258h20v24h-20z"/>
+    <path d="M20 300h480"/>
+  </g>
+  <g opacity="0.35" fill="#0AA39A">
+    <circle cx="300" cy="96" r="26"/>
+  </g>
+
+  <!-- ground shadow -->
+  <ellipse cx="262" cy="392" rx="180" ry="16" fill="#073174" opacity="0.08"/>
+
+  <!-- LEFT STUDENT -->
+  <g>
+    <path d="M150 392c-4-52 0-92 6-116 5-20 18-30 38-30h14c20 0 32 10 37 30 6 24 9 64 5 116z" fill="url(#jacket2)"/>
+    <path d="M195 246h20l-4 26c-1 8-11 8-12 0z" fill="#F3C6A5"/>
+    <rect x="186" y="196" width="38" height="52" rx="19" fill="#F3C6A5"/>
+    <path d="M184 210c-2-18 8-30 21-30s22 11 21 29c-6-6-12-9-21-9s-16 3-21 10z" fill="#2A2A38"/>
+    <circle cx="197" cy="219" r="2.2" fill="#2A2A38"/>
+    <circle cx="213" cy="219" r="2.2" fill="#2A2A38"/>
+    <path d="M200 230c3 3 7 3 10 0" stroke="#B4785A" stroke-width="2" stroke-linecap="round"/>
+    <!-- arm + books -->
+    <path d="M162 292c-6 16-4 30 6 40l30-6-8-40z" fill="url(#jacket2)"/>
+    <rect x="178" y="316" width="58" height="16" rx="3" fill="#FF6B17"/>
+    <rect x="178" y="330" width="58" height="14" rx="3" fill="#FFFFFF" stroke="#E5EAF2" stroke-width="2"/>
+    <rect x="178" y="342" width="58" height="12" rx="3" fill="#0AA39A"/>
+  </g>
+
+  <!-- RIGHT STUDENT -->
+  <g>
+    <path d="M310 392c-4-52 0-92 6-116 5-20 18-30 38-30h12c20 0 33 10 38 30 6 24 9 64 5 116z" fill="url(#jacket)"/>
+    <path d="M354 246h20l-4 26c-1 8-11 8-12 0z" fill="#E6B392"/>
+    <rect x="345" y="196" width="38" height="52" rx="19" fill="#E6B392"/>
+    <path d="M343 212c0-19 9-30 22-30 12 0 21 11 21 30-4-8-11-12-21-12s-18 4-22 12z" fill="#1F1F2B"/>
+    <circle cx="356" cy="219" r="2.2" fill="#2A2A38"/>
+    <circle cx="372" cy="219" r="2.2" fill="#2A2A38"/>
+    <path d="M359 230c3 3 7 3 10 0" stroke="#A96B4E" stroke-width="2" stroke-linecap="round"/>
+    <!-- backpack strap -->
+    <path d="M340 256c8 22 8 62 6 96" stroke="#FF6B17" stroke-width="6" stroke-linecap="round"/>
+    <!-- arm holding folder -->
+    <path d="M400 288c8 14 8 30 0 42l-28-4 4-40z" fill="url(#jacket)"/>
+    <rect x="366" y="312" width="52" height="40" rx="5" fill="#FFFFFF" stroke="#E5EAF2" stroke-width="2"/>
+    <path d="M374 324h36M374 334h26" stroke="#B9CDF6" stroke-width="3" stroke-linecap="round"/>
+  </g>
+
+  <!-- CENTRE STUDENT (front) -->
+  <g>
+    <path d="M222 392c-6-58-2-104 6-130 7-22 22-32 44-32h16c22 0 37 10 44 32 8 26 12 72 6 130z" fill="url(#kurta)"/>
+    <path d="M258 228h32l-6 30c-2 10-18 10-20 0z" fill="#F6CBA9"/>
+    <rect x="252" y="172" width="44" height="60" rx="22" fill="#F6CBA9"/>
+    <path d="M250 190c0-22 11-34 24-34s24 12 24 34c0 8-2 12-4 14 2-16-6-24-20-24s-22 8-20 24c-2-2-4-6-4-14z" fill="#241E1B"/>
+    <path d="M250 190c-6 26-4 48 2 62-14-16-16-44-2-62zM298 190c6 26 4 48-2 62 14-16 16-44 2-62z" fill="#241E1B"/>
+    <circle cx="265" cy="198" r="2.4" fill="#2A2A38"/>
+    <circle cx="283" cy="198" r="2.4" fill="#2A2A38"/>
+    <path d="M268 210c4 4 9 4 13 0" stroke="#B4785A" stroke-width="2.2" stroke-linecap="round"/>
+    <!-- notebooks held in front -->
+    <path d="M232 268c-8 20-8 44 2 60l38-6-8-56z" fill="url(#kurta)"/>
+    <path d="M320 268c8 20 8 44-2 60l-38-6 8-56z" fill="url(#kurta)"/>
+    <rect x="238" y="300" width="80" height="56" rx="6" fill="#FF8038"/>
+    <rect x="238" y="300" width="80" height="12" rx="6" fill="#FF6B17"/>
+    <rect x="248" y="322" width="60" height="6" rx="3" fill="#FFFFFF" opacity="0.85"/>
+    <rect x="248" y="334" width="42" height="6" rx="3" fill="#FFFFFF" opacity="0.6"/>
+  </g>
+</svg>

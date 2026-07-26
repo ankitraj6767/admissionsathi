@@ -1,0 +1,361 @@
+@import 'tailwindcss';
+
+/* =========================================================
+   ADMISSION SATHI — Design tokens
+   Tailwind CSS v4 CSS-first configuration.
+   ========================================================= */
+@theme {
+  /* ---- Brand ---- */
+  --color-navy-50: #eef4ff;
+  --color-navy-100: #dbe6fb;
+  --color-navy-200: #b9cdf6;
+  --color-navy-300: #86a9ea;
+  --color-navy-400: #4f7ed6;
+  --color-navy-500: #2a5bbd;
+  --color-navy-600: #164496;
+  --color-navy: #073174;
+  --color-navy-700: #073174;
+  --color-navy-800: #05265c;
+  --color-navy-900: #041c46;
+
+  --color-orange-50: #fff2e8;
+  --color-orange-100: #ffe2cd;
+  --color-orange-200: #ffc59f;
+  --color-orange-300: #ffa068;
+  --color-orange-400: #ff8038;
+  --color-orange: #ff6b17;
+  --color-orange-500: #ff6b17;
+  --color-orange-600: #e85706;
+  --color-orange-700: #bf4507;
+
+  --color-teal: #0aa39a;
+  --color-teal-50: #e6f7f6;
+  --color-teal-600: #08847d;
+  --color-green: #21a663;
+  --color-green-50: #e8f7ef;
+  --color-purple: #7048d8;
+  --color-purple-50: #f0ebfc;
+  --color-pink: #e54786;
+  --color-pink-50: #fdecf3;
+  --color-blue: #2563eb;
+  --color-blue-50: #eaf1ff;
+  --color-red-alert: #e11d48;
+  --color-amber-alert: #f59e0b;
+
+  /* ---- Surfaces ---- */
+  --color-page: #f5f8fd;
+  --color-card: #ffffff;
+  --color-muted: #f3f6fb;
+
+  /* ---- Text ---- */
+  --color-ink: #12213d;
+  --color-ink-soft: #667085;
+  --color-line: #e5eaf2;
+
+  /* ---- Radii ---- */
+  --radius-card: 14px;
+  --radius-panel: 18px;
+  --radius-xl2: 20px;
+  --radius-pill: 999px;
+
+  /* ---- Shadows (soft, realistic) ---- */
+  --shadow-xs: 0 1px 2px 0 rgb(16 32 64 / 0.04);
+  --shadow-card: 0 1px 2px 0 rgb(16 32 64 / 0.04), 0 6px 16px -6px rgb(16 32 64 / 0.08);
+  --shadow-raised: 0 2px 4px -1px rgb(16 32 64 / 0.05), 0 12px 28px -10px rgb(16 32 64 / 0.14);
+  --shadow-pop: 0 8px 20px -6px rgb(16 32 64 / 0.14), 0 24px 48px -20px rgb(16 32 64 / 0.2);
+
+  /* ---- Typography ---- */
+  --font-sans:
+    var(--font-inter), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-display: var(--font-manrope), var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  /* fluid scale */
+  --text-hero: clamp(1.9rem, 1.15rem + 2.6vw, 3.05rem);
+  --text-hero--line-height: 1.1;
+  --text-hero--letter-spacing: -0.02em;
+  --text-section: clamp(1.05rem, 0.95rem + 0.45vw, 1.3rem);
+  --text-section--line-height: 1.25;
+
+  /* ---- Layout ---- */
+  --container-shell: 1320px;
+
+  /* ---- Motion ---- */
+  --ease-premium: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* =========================================================
+   Base layer
+   ========================================================= */
+@layer base {
+
+  *,
+  *::before,
+  *::after {
+    border-color: var(--color-line);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+    scroll-padding-top: 96px;
+  }
+
+  body {
+    background-color: var(--color-page);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-display);
+    color: var(--color-ink);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-orange);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: var(--color-orange-100);
+    color: var(--color-navy-800);
+  }
+
+  /* Scrollbars for horizontal card rails */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}
+
+/* =========================================================
+   Reusable component utilities
+   ========================================================= */
+@layer components {
+  .shell {
+    width: 100%;
+    max-width: var(--container-shell);
+    margin-inline: auto;
+    padding-inline: 16px;
+  }
+
+  @media (min-width: 768px) {
+    .shell {
+      padding-inline: 24px;
+    }
+  }
+
+  @media (min-width: 1536px) {
+    .shell {
+      max-width: 1440px;
+    }
+  }
+
+  .surface-card {
+    background: var(--color-card);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-panel);
+    box-shadow: var(--shadow-card);
+  }
+
+  .section-title {
+    font-family: var(--font-display);
+    font-size: 1.0625rem;
+    font-weight: 700;
+    color: var(--color-navy-800);
+    letter-spacing: -0.01em;
+  }
+
+  .link-more {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-navy-600);
+  }
+
+  .link-more:hover {
+    color: var(--color-orange);
+  }
+
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid var(--color-line);
+    background: var(--color-card);
+    border-radius: var(--radius-pill);
+    padding: 6px 14px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--color-ink);
+    transition: all 0.18s var(--ease-premium);
+  }
+
+  .chip:hover {
+    border-color: var(--color-orange-200);
+    background: var(--color-orange-50);
+    color: var(--color-orange-700);
+  }
+
+  .skeleton {
+    background: linear-gradient(90deg, #eef2f8 25%, #f7f9fc 37%, #eef2f8 63%);
+    background-size: 400% 100%;
+    animation: shimmer 1.4s ease infinite;
+    border-radius: 8px;
+  }
+
+  .hide-native-number::-webkit-outer-spin-button,
+  .hide-native-number::-webkit-inner-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+/* Rich text output from the CMS editor */
+.prose-sathi {
+  color: var(--color-ink);
+  font-size: 0.95rem;
+  line-height: 1.75;
+}
+
+.prose-sathi h2 {
+  font-size: 1.35rem;
+  margin: 1.75rem 0 0.75rem;
+}
+
+.prose-sathi h3 {
+  font-size: 1.1rem;
+  margin: 1.4rem 0 0.6rem;
+}
+
+.prose-sathi p {
+  margin-bottom: 0.9rem;
+}
+
+.prose-sathi ul,
+.prose-sathi ol {
+  margin: 0 0 1rem 1.15rem;
+  display: grid;
+  gap: 0.35rem;
+}
+
+.prose-sathi ul {
+  list-style: disc;
+}
+
+.prose-sathi ol {
+  list-style: decimal;
+}
+
+.prose-sathi a {
+  color: var(--color-navy-600);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.prose-sathi table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+}
+
+.prose-sathi th,
+.prose-sathi td {
+  border: 1px solid var(--color-line);
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.prose-sathi th {
+  background: var(--color-muted);
+  font-weight: 600;
+}
+
+.prose-sathi blockquote {
+  border-left: 3px solid var(--color-orange);
+  background: var(--color-orange-50);
+  padding: 10px 14px;
+  border-radius: 0 10px 10px 0;
+  margin-bottom: 1rem;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+
+  to {
+    transform: translateY(0);
+  }
+}

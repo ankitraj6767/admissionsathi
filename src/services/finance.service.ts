@@ -1,0 +1,162 @@
+import 'server-only';
+import { cache } from 'react';
+import { connectToDatabase } from '@/db/connect';
+import {
+    LoanProduct,
+    LoanProvider,
+    Scholarship,
+    type LoanProductDoc,
+    type LoanProviderDoc,
+    type ScholarshipDoc,
+} from '@/db/models/finance.model';
+import { LoanCalculation } from '@/db/models/system.model';
+import { findLean, findOneLean, paginate, toPlain } from '@/db/repositories/base.repository';
+import { escapeRegex } from '@/lib/utils';
+import { CACHE_TAGS, CACHE_TTL, cached } from '@/lib/cache';
+import type { EmiResult } from '@/lib/finance/emi';
+import type { Paginated } from '@/types/common';
+
+/* --------------------------------- loans --------------------------------- */
+
+export const listLoanProviders = cached(
+    async () =>
+        toPlain(
+            await findLean<LoanProviderDoc>(
+                LoanProvider,
+                { status: 'published' },
+                { sort: { isFeatured: -1, displayOrder: 1 }, limit: 40 },
+            ),
+        ),
+    ['loan-providers'],
+    { tags: [CACHE_TAGS.loanProviders], revalidate: CACHE_TTL.long },
+);
+
+export const getLoanProvider = cache(async (slug: string) => {
+    const provider = await findOneLean<LoanProviderDoc>(LoanProvider, { slug, status: 'published' });
+    if (!provider) return null;
+    const products = await findLean<LoanProductDoc>(
+        LoanProduct,
+        { provider: provider._id, status: 'active' },
+        { sort: { displayOrder: 1 }, limit: 10 },
+    );
+    return toPlain({ provider, products });
+});
+
+export async function saveLoanCalculation(input: {
+    userId?: string;
+    anonymousId?: string;
+    courseFee?: number;
+    loanAmount: number;
+    interestRate: number;
+    tenureMonths: number;
+    moratoriumMonths: number;
+    processingFeePercent?: number;
+    result: EmiResult;
+    providerId?: string;
+}): Promise<string> {
+    await connectToDatabase();
+    const created = await LoanCalculation.create({
+        user: input.userId,
+        anonymousId: input.anonymousId,
+        courseFee: input.courseFee,
+        loanAmount: input.loanAmount,
+        interestRate: input.interestRate,
+        tenureMonths: input.tenureMonths,
+        moratoriumMonths: input.moratoriumMonths,
+        processingFeePercent: input.processingFeePercent,
+        emi: input.result.emi,
+        totalInterest: input.result.totalInterest,
+        totalRepayment: input.result.totalRepayment,
+        provider: input.providerId,
+    });
+    return String(created._id);
+}
+
+export async function listUserLoanCalculations(userId: string, limit = 20) {
+    await connectToDatabase();
+    const rows = await LoanCalculation.find({ user: userId })
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .lean()
+        .exec();
+    return toPlain(rows);
+}
+
+/* ------------------------------ scholarships ----------------------------- */
+
+export interface ScholarshipSearchParams {
+    q?: string;
+    provider?: string;
+    level?: string;
+    category?: string;
+    course?: string;
+    benefit?: string;
+    sort?: string;
+    page?: string;
+}
+
+export async function searchScholarships(
+    params: ScholarshipSearchParams,
+): Promise<Paginated<ScholarshipDoc>> {
+    const filter: Record<string, unknown> = { status: 'published' };
+
+    if (params.q) {
+        const rx = new RegExp(escapeRegex(params.q), 'i');
+        filter.$or = [{ name: rx }, { provider: rx }];
+    }
+    if (params.provider) filter.providerType = params.provider;
+    if (params.level) filter.targetLevels = params.level;
+    if (params.category) filter.targetCategories = params.category;
+    if (params.benefit) filter.benefitType = params.benefit;
+    if (params.course) {
+        const { Course } = await import('@/db/models/course.model');
+        const course = await Course.findOne({ slug: params.course }).select('_id').lean().exec();
+        if (course) filter.targetCourses = course._id;
+    }
+
+    const sort: Record<string, 1 | -1> =
+        params.sort === 'deadline'
+            ? { applicationDeadline: 1 }
+            : params.sort === 'amount'
+              ? { amountMax: -1 }
+              : { isFeatured: -1, applicationDeadline: 1 };
+
+    return toPlain(
+        await paginate<ScholarshipDoc>(Scholarship, {
+            filter,
+            page: Number(params.page) || 1,
+            pageSize: 12,
+            sort,
+        }),
+    );
+}
+
+export const getScholarship = cache(async (slug: string) => {
+    const scholarship = await findOneLean<ScholarshipDoc>(Scholarship, { slug, status: 'published' });
+    if (!scholarship) return null;
+
+    const related = await findLean<ScholarshipDoc>(
+        Scholarship,
+        {
+            status: 'published',
+            _id: { $ne: scholarship._id },
+            providerType: scholarship.providerType,
+        },
+        { limit: 5, sort: { isFeatured: -1 } },
+    );
+
+    return toPlain({ scholarship, related });
+});
+
+export const listFeaturedScholarships = cached(
+    async () =>
+        toPlain(
+            await findLean<ScholarshipDoc>(
+                Scholarship,
+                { status: 'published', isFeatured: true },
+                { limit: 8, sort: { applicationDeadline: 1 } },
+            ),
+        ),
+    ['featured-scholarships'],
+    { tags: [CACHE_TAGS.scholarships], revalidate: CACHE_TTL.long },
+);
