@@ -111,6 +111,21 @@
     overflow-x: hidden;
   }
 
+  /*
+   * The counselling bar is homepage-only. Reserve space after the full public
+   * layout (including its footer) whenever that fixed bar exists, so the final
+   * legal links can scroll completely above it.
+   */
+  body:has([data-home-sticky-cta]) {
+    padding-bottom: calc(76px + env(safe-area-inset-bottom));
+  }
+
+  @media (min-width: 768px) {
+    body:has([data-home-sticky-cta]) {
+      padding-bottom: calc(68px + env(safe-area-inset-bottom));
+    }
+  }
+
   h1,
   h2,
   h3,

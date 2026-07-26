@@ -33,15 +33,47 @@ test.describe('homepage', () => {
         }
     });
 
-    test('sticky counselling CTA is present', async ({ page }) => {
+    test('sticky counselling CTA is always pinned to the homepage bottom', async ({ page }) => {
         await gotoStable(page, '/');
 
         const stickyCta = page.getByRole('region', { name: /counselling call to action/i });
-        // Rendered on mount, translated into view after scrolling past the hero.
-        await expect(stickyCta).toBeAttached();
+        const viewportHeight = page.viewportSize()?.height ?? 0;
+        const expectPinnedToBottom = async () => {
+            await expect
+                .poll(async () => {
+                    const box = await stickyCta.boundingBox();
+                    return box ? Math.abs(viewportHeight - (box.y + box.height)) : Number.POSITIVE_INFINITY;
+                })
+                .toBeLessThanOrEqual(1);
+        };
+
+        await expect(stickyCta).toBeVisible();
+        await expect(page.getByRole('button', { name: /dismiss counselling banner/i })).toHaveCount(0);
+        await expectPinnedToBottom();
 
         await page.mouse.wheel(0, 900);
         await expect(stickyCta).toBeVisible();
+        await expectPinnedToBottom();
+
+        const footerLegalLink = page.locator('footer').getByRole('link', { name: 'Sitemap', exact: true });
+        await footerLegalLink.scrollIntoViewIfNeeded();
+        await expect(footerLegalLink).toBeVisible();
+        await expect
+            .poll(async () => {
+                // Homepage media can finish sizing after the first jump. Keep
+                // following the real page end before checking footer clearance.
+                await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+                const [ctaBox, legalLinkBox] = await Promise.all([stickyCta.boundingBox(), footerLegalLink.boundingBox()]);
+                if (!ctaBox || !legalLinkBox) return false;
+                return legalLinkBox.y + legalLinkBox.height <= ctaBox.y + 1;
+            })
+            .toBe(true);
+        await expectPinnedToBottom();
+    });
+
+    test('sticky counselling CTA remains homepage-only', async ({ page }) => {
+        await gotoStable(page, '/book-counselling');
+        await expect(page.getByRole('region', { name: /counselling call to action/i })).toHaveCount(0);
     });
 
     test('hero exposes the search entry point', async ({ page }) => {
