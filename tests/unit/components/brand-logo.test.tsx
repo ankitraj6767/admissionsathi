@@ -13,31 +13,41 @@ const branding: BrandingConfig = {
 };
 
 describe('BrandLogo', () => {
-    it('renders the configured light and dark assets with dynamic accessibility text', () => {
-        const { rerender } = render(<BrandLogo branding={branding} />);
+    it('renders the configured emblem with a dynamic light and dark wordmark', () => {
+        const { container, rerender } = render(<BrandLogo branding={branding} />);
 
         expect(screen.getByRole('link', { name: 'Campus Guide home' })).toHaveAttribute(
             'href',
             '/',
         );
-        expect(screen.getByRole('img', { name: 'Campus Guide logo' })).toHaveAttribute(
+        expect(container.querySelector('img')).toHaveAttribute(
             'src',
             branding.logoUrl,
         );
+        expect(screen.getByText('Campus')).toHaveStyle({ color: '#073174' });
+        expect(screen.getByText('Guide')).toHaveClass('text-orange');
+        expect(screen.getByText('Find your next step')).toHaveStyle({ color: '#667085' });
 
         rerender(<BrandLogo variant="dark" branding={branding} />);
-        expect(screen.getByRole('img', { name: 'Campus Guide logo' })).toHaveAttribute(
+        expect(container.querySelector('img')).toHaveAttribute(
             'src',
             branding.logoDarkUrl,
         );
+        expect(screen.getByText('Campus')).toHaveStyle({ color: '#FFFFFF' });
+        expect(screen.getByText('Guide')).toHaveClass('text-orange');
+        expect(screen.getByText('Find your next step')).toHaveStyle({
+            color: 'rgba(255,255,255,0.72)',
+        });
     });
 
-    it('falls back to the dynamic inline wordmark when an asset fails', () => {
-        render(<BrandLogo branding={branding} />);
+    it('falls back to the inline emblem without hiding the dynamic wordmark', () => {
+        const { container } = render(<BrandLogo branding={branding} />);
+        const image = container.querySelector('img');
 
-        fireEvent.error(screen.getByRole('img', { name: 'Campus Guide logo' }));
+        expect(image).not.toBeNull();
+        fireEvent.error(image!);
 
-        expect(screen.queryByRole('img', { name: 'Campus Guide logo' })).not.toBeInTheDocument();
+        expect(container.querySelector('img')).not.toBeInTheDocument();
         expect(screen.getByText('Campus')).toBeInTheDocument();
         expect(screen.getByText('Guide')).toBeInTheDocument();
         expect(screen.getByText('Find your next step')).toBeInTheDocument();
