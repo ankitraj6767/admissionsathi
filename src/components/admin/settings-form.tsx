@@ -35,16 +35,23 @@ const GROUP_LABELS: Record<string, string> = {
 export function SettingsForm({ settings }: { settings: SettingRow[] }) {
     const [message, setMessage] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
+    const fieldNameByKey = new Map(
+        settings.map((setting, index) => [setting.key, `setting_${index}`]),
+    );
 
     const defaults = Object.fromEntries(
-        settings.map((setting) => [
-            setting.key,
-            setting.valueType === 'boolean'
-                ? Boolean(setting.value)
-                : setting.valueType === 'json'
-                    ? JSON.stringify(setting.value ?? {}, null, 2)
-                    : (setting.value ?? ''),
-        ]),
+        settings.flatMap((setting) =>
+            setting.isSecret
+                ? []
+                : [[
+                    fieldNameByKey.get(setting.key)!,
+                    setting.valueType === 'boolean'
+                        ? Boolean(setting.value)
+                        : setting.valueType === 'json'
+                            ? JSON.stringify(setting.value ?? {}, null, 2)
+                            : (setting.value ?? ''),
+                ]],
+        ),
     );
 
     const {
@@ -58,7 +65,14 @@ export function SettingsForm({ settings }: { settings: SettingRow[] }) {
     const onSubmit = async (values: Record<string, unknown>) => {
         setMessage(null);
         setError(null);
-        const result = await updateSettingsAction({ values });
+        const flatValues = Object.fromEntries(
+            settings.flatMap((setting) =>
+                setting.isSecret
+                    ? []
+                    : [[setting.key, values[fieldNameByKey.get(setting.key)!]]],
+            ),
+        );
+        const result = await updateSettingsAction({ values: flatValues });
         if (result.ok) setMessage(result.message ?? 'Saved.');
         else setError(result.error);
     };
@@ -87,6 +101,7 @@ export function SettingsForm({ settings }: { settings: SettingRow[] }) {
                             .filter((setting) => setting.group === group)
                             .map((setting) => {
                                 const id = `setting-${setting.key.replace(/\./g, '-')}`;
+                                const fieldName = fieldNameByKey.get(setting.key)!;
 
                                 if (setting.isSecret) {
                                     return (
@@ -104,7 +119,7 @@ export function SettingsForm({ settings }: { settings: SettingRow[] }) {
                                 if (setting.valueType === 'boolean') {
                                     return (
                                         <label key={setting.key} className="flex items-start gap-2 py-1.5 text-[12.5px] text-ink">
-                                            <Checkbox id={id} {...register(setting.key)} />
+                                            <Checkbox id={id} {...register(fieldName)} />
                                             <span>
                                                 {setting.label}
                                                 {setting.description ? (
@@ -130,13 +145,13 @@ export function SettingsForm({ settings }: { settings: SettingRow[] }) {
                                                 id={id}
                                                 rows={setting.valueType === 'json' ? 6 : 4}
                                                 className={setting.valueType === 'json' ? 'font-mono text-[12px]' : undefined}
-                                                {...register(setting.key)}
+                                                {...register(fieldName)}
                                             />
                                         ) : (
                                             <Input
                                                 id={id}
                                                 type={setting.valueType === 'number' ? 'number' : 'text'}
-                                                {...register(setting.key)}
+                                                {...register(fieldName)}
                                             />
                                         )}
                                     </Field>

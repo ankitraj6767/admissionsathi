@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, updateTag } from 'next/cache';
 import { z } from 'zod';
 import { connectToDatabase } from '@/db/connect';
 import { NavigationItem, NavigationMenu, SiteSetting } from '@/db/models/site.model';
@@ -8,6 +8,7 @@ import { requirePermission } from '@/lib/auth/session';
 import { recordAudit } from '@/services/audit.service';
 import { CACHE_TAGS } from '@/lib/cache';
 import { invalidateTags } from '@/lib/revalidate';
+import { readSubmittedSettingValue } from '@/lib/settings-payload';
 import { NotFoundError, fail, runAction, succeed } from '@/lib/action-helpers';
 import type { ActionResult } from '@/types/common';
 
@@ -25,18 +26,21 @@ export async function updateSettingsAction(input: unknown): Promise<ActionResult
 
         await connectToDatabase();
 
-        const keys = Object.keys(data.values);
-        const definitions = await SiteSetting.find({ key: { $in: keys } }).lean().exec();
-        const byKey = new Map(definitions.map((d) => [d.key, d]));
+        // Read the bounded canonical definitions instead of trusting submitted
+        // keys. This also lets the server accept payloads from already-open
+        // versions of the old dotted-name form.
+        const definitions = await SiteSetting.find({ isSecret: false }).limit(500).lean().exec();
 
         let updated = 0;
         const previous: Record<string, unknown> = {};
         const next: Record<string, unknown> = {};
 
-        for (const [key, raw] of Object.entries(data.values)) {
-            const definition = byKey.get(key);
-            if (!definition) continue;
-            if (definition.isSecret) continue; // secrets are managed through env vars only
+        for (const definition of definitions) {
+            const submitted = readSubmittedSettingValue(data.values, definition.key);
+            if (!submitted.found) continue;
+
+            const key = definition.key;
+            const raw = submitted.value;
 
             let value: unknown = raw;
             if (definition.valueType === 'boolean') value = raw === true || raw === 'true' || raw === 'on';
@@ -58,6 +62,10 @@ export async function updateSettingsAction(input: unknown): Promise<ActionResult
             updated += 1;
         }
 
+        if (updated === 0) {
+            return fail('No editable settings were submitted.', 'VALIDATION');
+        }
+
         await recordAudit({
             actor,
             action: 'settings.update',
@@ -67,8 +75,12 @@ export async function updateSettingsAction(input: unknown): Promise<ActionResult
             newValues: next,
         });
 
-        invalidateTags([CACHE_TAGS.settings, CACHE_TAGS.homepage]);
-        revalidatePath('/');
+        // Admin saves require read-after-write freshness. `revalidateTag(...,
+        // 'max')` is stale-while-revalidate and can serve the old settings on
+        // the first public request, so use the Server Action-only immediate API.
+        updateTag(CACHE_TAGS.settings);
+        updateTag(CACHE_TAGS.homepage);
+        revalidatePath('/', 'layout');
         revalidatePath('/admin/settings');
 
         return succeed({ updated }, `${updated} setting(s) saved.`);

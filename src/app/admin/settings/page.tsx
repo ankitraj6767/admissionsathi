@@ -19,7 +19,8 @@ export default async function AdminSettingsPage() {
         label: row.label,
         description: row.description,
         valueType: row.valueType,
-        value: row.value,
+        // Secret values must never cross the Server Component boundary.
+        value: row.isSecret ? null : row.value,
         isSecret: row.isSecret,
     }));
 
