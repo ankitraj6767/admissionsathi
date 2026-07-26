@@ -7,6 +7,10 @@ coverage
 .env
 .env.local
 .env*.local
+# Paste-ready production values for the Vercel dashboard. Real secrets — never
+# commit. Not one of the filenames Next.js auto-loads, so it cannot leak into a
+# local build.
+.env.vercel
 *.log
 npm-debug.log*
 .DS_Store
