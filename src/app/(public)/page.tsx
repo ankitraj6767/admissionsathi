@@ -92,7 +92,7 @@ export default async function HomePage() {
 
     return (
         <>
-            <JsonLd data={[buildOrganizationJsonLd(settings), buildWebsiteJsonLd()]} />
+            <JsonLd data={[buildOrganizationJsonLd(settings), buildWebsiteJsonLd(settings)]} />
 
             {hero.isEnabled ? (
                 <HeroSection

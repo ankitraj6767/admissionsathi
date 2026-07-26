@@ -7,10 +7,19 @@ vi.mock('next/navigation', () => ({
 }));
 
 import { MobileNav } from '@/components/layout/mobile-nav';
+import { DEFAULT_BRANDING } from '@/lib/branding';
 
 describe('MobileNav account destinations', () => {
     it('shows both admin and user dashboards to signed-in staff', async () => {
-        render(<MobileNav items={[]} isAuthenticated isStaff phone="+91 90000 00000" />);
+        render(
+            <MobileNav
+                items={[]}
+                isAuthenticated
+                isStaff
+                phone="+91 90000 00000"
+                branding={DEFAULT_BRANDING}
+            />,
+        );
 
         fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
 
@@ -19,7 +28,14 @@ describe('MobileNav account destinations', () => {
     });
 
     it('keeps the admin destination hidden from student accounts', async () => {
-        render(<MobileNav items={[]} isAuthenticated isStaff={false} />);
+        render(
+            <MobileNav
+                items={[]}
+                isAuthenticated
+                isStaff={false}
+                branding={DEFAULT_BRANDING}
+            />,
+        );
 
         fireEvent.click(screen.getByRole('button', { name: 'Open menu' }));
 

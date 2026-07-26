@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { useRouter } from 'next/navigation';
 import { Save } from 'lucide-react';
 import { updateSettingsAction } from '@/actions/admin/settings.actions';
 import { Button } from '@/components/ui/button';
@@ -33,6 +34,7 @@ const GROUP_LABELS: Record<string, string> = {
 
 /** Grouped settings editor. Secret values are shown read-only. */
 export function SettingsForm({ settings }: { settings: SettingRow[] }) {
+    const router = useRouter();
     const [message, setMessage] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
     const fieldNameByKey = new Map(
@@ -73,8 +75,12 @@ export function SettingsForm({ settings }: { settings: SettingRow[] }) {
             ),
         );
         const result = await updateSettingsAction({ values: flatValues });
-        if (result.ok) setMessage(result.message ?? 'Saved.');
-        else setError(result.error);
+        if (result.ok) {
+            setMessage(result.message ?? 'Saved.');
+            // Re-render the active root/admin layouts so branding changes are
+            // visible immediately without a manual browser refresh.
+            router.refresh();
+        } else setError(result.error);
     };
 
     return (

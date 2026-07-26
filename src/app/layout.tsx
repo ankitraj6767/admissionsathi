@@ -3,6 +3,8 @@ import { Inter, Manrope } from 'next/font/google';
 import './globals.css';
 import { siteConfig } from '@/config/site';
 import { AnalyticsProvider } from '@/components/analytics/analytics-provider';
+import { getSettings, readString } from '@/services/settings.service';
+import { resolveBranding } from '@/lib/branding';
 
 const inter = Inter({
     subsets: ['latin'],
@@ -18,39 +20,54 @@ const manrope = Manrope({
     weight: ['600', '700', '800'],
 });
 
-export const metadata: Metadata = {
-    metadataBase: new URL(siteConfig.url),
-    title: {
-        default: `${siteConfig.name} — ${siteConfig.tagline}`,
-        template: `%s | ${siteConfig.name}`,
-    },
-    description: siteConfig.description,
-    applicationName: siteConfig.name,
-    keywords: [
-        'college admission',
-        'career counselling',
-        'college predictor',
-        'entrance exams',
-        'education loan',
-        'scholarships',
-        'courses in India',
-    ],
-    authors: [{ name: siteConfig.name }],
-    openGraph: {
-        type: 'website',
-        locale: siteConfig.locale,
-        url: siteConfig.url,
-        siteName: siteConfig.name,
-        title: `${siteConfig.name} — ${siteConfig.tagline}`,
-        description: siteConfig.description,
-    },
-    twitter: {
-        card: 'summary_large_image',
-        site: siteConfig.twitter,
-    },
-    robots: { index: true, follow: true },
-    alternates: { canonical: '/' },
-};
+export async function generateMetadata(): Promise<Metadata> {
+    const settings = await getSettings();
+    const branding = resolveBranding(settings);
+    const description = readString(
+        settings,
+        'seo.defaultDescription',
+        siteConfig.description,
+    );
+
+    return {
+        metadataBase: new URL(siteConfig.url),
+        title: {
+            default: `${branding.name} — ${branding.tagline}`,
+            template: `%s | ${branding.name}`,
+        },
+        description,
+        applicationName: branding.name,
+        keywords: [
+            'college admission',
+            'career counselling',
+            'college predictor',
+            'entrance exams',
+            'education loan',
+            'scholarships',
+            'courses in India',
+        ],
+        authors: [{ name: branding.name }],
+        icons: {
+            icon: [{ url: branding.faviconUrl }],
+            shortcut: [{ url: branding.faviconUrl }],
+            apple: [{ url: branding.faviconUrl }],
+        },
+        openGraph: {
+            type: 'website',
+            locale: siteConfig.locale,
+            url: siteConfig.url,
+            siteName: branding.name,
+            title: `${branding.name} — ${branding.tagline}`,
+            description,
+        },
+        twitter: {
+            card: 'summary_large_image',
+            site: siteConfig.twitter,
+        },
+        robots: { index: true, follow: true },
+        alternates: { canonical: '/' },
+    };
+}
 
 export const viewport: Viewport = {
     themeColor: siteConfig.themeColor,

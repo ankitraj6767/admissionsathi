@@ -81,6 +81,7 @@ export async function updateSettingsAction(input: unknown): Promise<ActionResult
         updateTag(CACHE_TAGS.settings);
         updateTag(CACHE_TAGS.homepage);
         revalidatePath('/', 'layout');
+        revalidatePath('/manifest.webmanifest');
         revalidatePath('/admin/settings');
 
         return succeed({ updated }, `${updated} setting(s) saved.`);

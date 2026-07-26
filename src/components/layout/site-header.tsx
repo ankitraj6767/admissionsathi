@@ -11,6 +11,7 @@ import { filterNavForViewer, getMenu } from '@/services/navigation.service';
 import { getSettings, readString } from '@/services/settings.service';
 import { getCurrentActor } from '@/lib/auth/session';
 import { isStaff } from '@/lib/auth/rbac';
+import { resolveBranding } from '@/lib/branding';
 
 /**
  * Public site header.
@@ -32,6 +33,7 @@ export async function SiteHeader() {
 
     const items = filterNavForViewer(headerMenu, viewer);
     const phone = readString(settings, 'contact.phone', '');
+    const branding = resolveBranding(settings);
 
     return (
         <header className="sticky top-0 z-50">
@@ -39,7 +41,7 @@ export async function SiteHeader() {
 
             <HeaderShell>
                 <div className="header-shell flex h-16 items-center justify-between gap-3">
-                    <BrandLogo />
+                    <BrandLogo branding={branding} />
 
                     <DesktopNav items={items} />
 
@@ -72,6 +74,7 @@ export async function SiteHeader() {
                             phone={phone}
                             isAuthenticated={viewer.isAuthenticated}
                             isStaff={viewer.isStaff}
+                            branding={branding}
                         />
                     </div>
                 </div>

@@ -17,7 +17,7 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
     { key: 'site.tagline', group: 'general', label: 'Tagline', valueType: 'string', value: siteConfig.tagline, isPublic: true, isSecret: false, displayOrder: 2 },
     { key: 'site.logoUrl', group: 'general', label: 'Logo URL', valueType: 'image', value: '/brand/logo.svg', isPublic: true, isSecret: false, displayOrder: 3 },
     { key: 'site.logoDarkUrl', group: 'general', label: 'Logo (dark background)', valueType: 'image', value: '/brand/logo-light.svg', isPublic: true, isSecret: false, displayOrder: 4 },
-    { key: 'site.faviconUrl', group: 'general', label: 'Favicon URL', valueType: 'image', value: '/favicon.ico', isPublic: true, isSecret: false, displayOrder: 5 },
+    { key: 'site.faviconUrl', group: 'general', label: 'Favicon URL', valueType: 'image', value: '/icon.svg', isPublic: true, isSecret: false, displayOrder: 5 },
     { key: 'site.footerAbout', group: 'general', label: 'Footer brand summary', valueType: 'richtext', value: 'Admission Sathi is an independent education discovery and counselling platform. We help students shortlist courses and colleges, understand entrance exams, estimate admission chances and plan education finance — with free expert guidance at every step.', isPublic: true, isSecret: false, displayOrder: 6 },
     { key: 'site.copyright', group: 'general', label: 'Copyright line', valueType: 'string', value: `© ${new Date().getFullYear()} Admission Sathi. All rights reserved.`, isPublic: true, isSecret: false, displayOrder: 7 },
 

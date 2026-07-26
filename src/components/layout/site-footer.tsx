@@ -14,6 +14,7 @@ import { getSettings, readBool, readString } from '@/services/settings.service';
 import { listCities, listStates } from '@/db/repositories/geo.repository';
 import { BrandIcon } from '@/components/ui/brand-icon';
 import { Icon } from '@/components/ui/icon';
+import { resolveBranding } from '@/lib/branding';
 
 const SOCIALS: { key: string; label: string; icon: IconDefinition }[] = [
     { key: 'social.facebook', label: 'Facebook', icon: faFacebookF },
@@ -43,6 +44,7 @@ export async function SiteFooter() {
     const newsletterEnabled = readBool(settings, 'features.newsletterEnabled', true);
     const androidUrl = readString(settings, 'app.androidUrl', '#');
     const iosUrl = readString(settings, 'app.iosUrl', '#');
+    const branding = resolveBranding(settings);
 
     return (
         <footer className="mt-10 border-t border-navy-800 bg-navy-800 text-white/85">
@@ -50,7 +52,7 @@ export async function SiteFooter() {
                 <div className="grid gap-8 lg:grid-cols-[minmax(260px,1.15fr)_2.6fr]">
                     {/* Brand + contact */}
                     <div>
-                        <BrandLogo variant="dark" />
+                        <BrandLogo variant="dark" branding={branding} />
                         <p className="mt-3 max-w-sm text-[12.5px] leading-relaxed text-white/70">{about}</p>
 
                         <div className="mt-4 space-y-2 text-[12.5px]">

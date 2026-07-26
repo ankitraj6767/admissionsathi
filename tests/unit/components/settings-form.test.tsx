@@ -5,9 +5,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const actionMocks = vi.hoisted(() => ({
     updateSettingsAction: vi.fn(),
 }));
+const navigationMocks = vi.hoisted(() => ({
+    refresh: vi.fn(),
+}));
 
 vi.mock('@/actions/admin/settings.actions', () => ({
     updateSettingsAction: actionMocks.updateSettingsAction,
+}));
+vi.mock('next/navigation', () => ({
+    useRouter: () => ({ refresh: navigationMocks.refresh }),
 }));
 
 import { SettingsForm, type SettingRow } from '@/components/admin/settings-form';
@@ -65,6 +71,7 @@ describe('SettingsForm', () => {
             },
         });
         expect(await screen.findByRole('status')).toHaveTextContent('2 setting(s) saved.');
+        expect(navigationMocks.refresh).toHaveBeenCalledTimes(1);
     });
 
     it('never includes secret fields in the mutation payload', async () => {

@@ -9,15 +9,17 @@ import { Icon } from '@/components/ui/icon';
 import { BrandLogo } from '@/components/layout/brand-logo';
 import { signOutAction } from '@/actions/auth.actions';
 import { cn, initials } from '@/lib/utils';
+import type { BrandingConfig } from '@/lib/branding';
 
 export interface AdminShellProps {
     actor: { name: string; email: string; roles: string[]; permissions: string[] };
     badges: { newLeads: number; pendingReviews: number; draftContent: number };
+    branding: BrandingConfig;
     children: React.ReactNode;
 }
 
 /** Collapsible admin sidebar + topbar. Nav items are permission-filtered. */
-export function AdminShell({ actor, badges, children }: AdminShellProps) {
+export function AdminShell({ actor, badges, branding, children }: AdminShellProps) {
     const pathname = usePathname() ?? '/admin';
     const [collapsed, setCollapsed] = useState(false);
     const [mobileOpen, setMobileOpen] = useState(false);
@@ -51,7 +53,12 @@ export function AdminShell({ actor, badges, children }: AdminShellProps) {
                         <Icon name="Shield" className="h-6 w-6" />
                     </Link>
                 ) : (
-                    <BrandLogo variant="dark" showTagline={false} href="/admin" />
+                    <BrandLogo
+                        variant="dark"
+                        showTagline={false}
+                        href="/admin"
+                        branding={branding}
+                    />
                 )}
             </div>
 

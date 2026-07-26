@@ -1,5 +1,6 @@
 import { siteConfig } from '@/config/site';
 import { absoluteUrl, stripHtml, truncate } from '@/lib/utils';
+import { resolveBranding } from '@/lib/branding';
 
 type Json = Record<string, unknown>;
 
@@ -23,6 +24,7 @@ export function JsonLd({ data }: { data: Json | Json[] }) {
 }
 
 export function buildOrganizationJsonLd(settings: Record<string, unknown>): Json {
+    const branding = resolveBranding(settings);
     const phone = typeof settings['contact.phone'] === 'string' ? settings['contact.phone'] : undefined;
     const email = typeof settings['contact.email'] === 'string' ? settings['contact.email'] : undefined;
     const socials = [
@@ -38,12 +40,17 @@ export function buildOrganizationJsonLd(settings: Record<string, unknown>): Json
     return {
         '@context': 'https://schema.org',
         '@type': 'EducationalOrganization',
-        name: siteConfig.name,
-        alternateName: siteConfig.shortName,
+        name: branding.name,
+        alternateName: branding.name,
         url: siteConfig.url,
-        logo: absoluteUrl('/brand/logo.svg'),
-        slogan: siteConfig.tagline,
-        description: siteConfig.description,
+        logo: branding.logoUrl.startsWith('https://')
+            ? branding.logoUrl
+            : absoluteUrl(branding.logoUrl),
+        slogan: branding.tagline,
+        description:
+            typeof settings['seo.defaultDescription'] === 'string'
+                ? settings['seo.defaultDescription']
+                : siteConfig.description,
         sameAs: socials,
         contactPoint: [
             {
@@ -58,11 +65,12 @@ export function buildOrganizationJsonLd(settings: Record<string, unknown>): Json
     };
 }
 
-export function buildWebsiteJsonLd(): Json {
+export function buildWebsiteJsonLd(settings: Record<string, unknown> = {}): Json {
+    const branding = resolveBranding(settings);
     return {
         '@context': 'https://schema.org',
         '@type': 'WebSite',
-        name: siteConfig.name,
+        name: branding.name,
         url: siteConfig.url,
         potentialAction: {
             '@type': 'SearchAction',

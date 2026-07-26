@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Portal } from '@/components/ui/portal';
 import { BrandLogo } from './brand-logo';
 import type { NavNode } from '@/services/navigation.service';
+import type { BrandingConfig } from '@/lib/branding';
 
 /** Mobile drawer navigation with accordion sub-menus and a locked body scroll. */
 export function MobileNav({
@@ -17,11 +18,13 @@ export function MobileNav({
     phone,
     isAuthenticated,
     isStaff,
+    branding,
 }: {
     items: NavNode[];
     phone?: string;
     isAuthenticated: boolean;
     isStaff: boolean;
+    branding: BrandingConfig;
 }) {
     const [open, setOpen] = useState(false);
     const [expanded, setExpanded] = useState<string | null>(null);
@@ -78,7 +81,7 @@ export function MobileNav({
                             className="absolute right-0 top-0 flex h-full w-[86vw] max-w-[380px] animate-[slideInRight_.24s_var(--ease-premium)] flex-col bg-white shadow-pop"
                         >
                             <div className="flex shrink-0 items-center justify-between border-b border-line px-4 py-3">
-                                <BrandLogo showTagline={false} />
+                                <BrandLogo showTagline={false} branding={branding} />
                                 <button
                                     type="button"
                                     onClick={() => setOpen(false)}

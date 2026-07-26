@@ -1,12 +1,23 @@
 import type { MetadataRoute } from 'next';
 import { siteConfig } from '@/config/site';
+import { getSettings, readString } from '@/services/settings.service';
+import { resolveBranding } from '@/lib/branding';
 
-/** PWA manifest. Keeps the installed app on the brand navy/orange palette. */
-export default function manifest(): MetadataRoute.Manifest {
+export const dynamic = 'force-dynamic';
+
+/** Dynamic PWA manifest backed by the same branding settings as the website. */
+export default async function manifest(): Promise<MetadataRoute.Manifest> {
+    const settings = await getSettings();
+    const branding = resolveBranding(settings);
+
     return {
-        name: `${siteConfig.name} — ${siteConfig.tagline}`,
-        short_name: siteConfig.shortName,
-        description: siteConfig.description,
+        name: `${branding.name} — ${branding.tagline}`,
+        short_name: branding.name,
+        description: readString(
+            settings,
+            'seo.defaultDescription',
+            siteConfig.description,
+        ),
         start_url: '/',
         scope: '/',
         display: 'standalone',
@@ -16,8 +27,8 @@ export default function manifest(): MetadataRoute.Manifest {
         lang: 'en-IN',
         categories: ['education', 'productivity'],
         icons: [
-            { src: '/brand/logo.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
-            { src: '/icon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'maskable' },
+            { src: branding.logoUrl, sizes: 'any', purpose: 'any' },
+            { src: branding.faviconUrl, sizes: 'any', purpose: 'maskable' },
         ],
         shortcuts: [
             { name: 'Find Colleges', url: '/colleges' },
