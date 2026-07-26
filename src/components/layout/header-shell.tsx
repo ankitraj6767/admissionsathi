@@ -22,7 +22,7 @@ export function HeaderShell({ children }: { children: React.ReactNode }) {
         <div
             data-scrolled={scrolled}
             className={cn(
-                'sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur-md transition-shadow duration-300',
+                'w-full border-b bg-white/95 backdrop-blur-md transition-shadow duration-300',
                 scrolled ? 'border-line shadow-[0_6px_20px_-14px_rgba(16,32,64,0.35)]' : 'border-transparent',
             )}
         >

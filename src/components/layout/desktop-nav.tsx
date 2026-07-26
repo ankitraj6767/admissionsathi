@@ -79,7 +79,7 @@ export function DesktopNav({ items }: { items: NavNode[] }) {
                                 aria-haspopup="true"
                                 onClick={() => setOpenId(open ? null : item.id)}
                                 className={cn(
-                                    'flex h-16 items-center gap-1 px-3 text-[13.5px] font-semibold transition-colors',
+                                    'flex h-16 items-center gap-1 px-2 text-[13px] font-semibold transition-colors 2xl:px-2.5 2xl:text-[13.5px]',
                                     active || open ? 'text-navy-700' : 'text-ink hover:text-navy-700',
                                 )}
                             >
@@ -96,7 +96,7 @@ export function DesktopNav({ items }: { items: NavNode[] }) {
                             <Link
                                 href={item.url}
                                 className={cn(
-                                    'relative flex h-16 items-center px-3 text-[13.5px] font-semibold transition-colors',
+                                    'relative flex h-16 items-center px-2 text-[13px] font-semibold transition-colors 2xl:px-2.5 2xl:text-[13.5px]',
                                     active ? 'text-navy-700' : 'text-ink hover:text-navy-700',
                                 )}
                             >

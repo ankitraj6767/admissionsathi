@@ -5,8 +5,8 @@ import { Skeleton } from '@/components/ui/primitives';
 
 function HeaderFallback() {
     return (
-        <div className="border-b border-line bg-white">
-            <div className="shell flex h-16 items-center justify-between">
+        <div className="sticky top-0 z-50 border-b border-line bg-white">
+            <div className="header-shell flex h-16 items-center justify-between">
                 <Skeleton className="h-9 w-44" />
                 <Skeleton className="h-7 w-[420px] max-w-[40vw]" />
                 <Skeleton className="h-10 w-40" />

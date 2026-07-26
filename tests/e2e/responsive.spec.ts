@@ -71,4 +71,22 @@ test.describe('responsive layout', () => {
         await expectNoHorizontalOverflow(page, 'home @ 360x480');
         await expect(page.locator('main')).toBeVisible();
     });
+
+    test('the public header remains pinned and the desktop counselling CTA stays in bounds', async ({ page }) => {
+        await page.setViewportSize({ width: 1440, height: 900 });
+        await gotoStable(page, '/');
+
+        const header = page.locator('header').first();
+        const cta = header.getByRole('link', { name: 'Book Free Counselling', exact: true });
+
+        await expect(header).toBeVisible();
+        await expect(cta).toBeVisible();
+
+        const ctaBox = await cta.boundingBox();
+        expect(ctaBox).not.toBeNull();
+        expect((ctaBox?.x ?? 0) + (ctaBox?.width ?? 0)).toBeLessThanOrEqual(1440);
+
+        await page.evaluate(() => window.scrollTo(0, 900));
+        await expect.poll(async () => (await header.boundingBox())?.y ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(1);
+    });
 });

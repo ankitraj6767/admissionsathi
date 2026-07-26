@@ -175,15 +175,30 @@
     padding-inline: 16px;
   }
 
+  .header-shell {
+    width: 100%;
+    max-width: 1400px;
+    margin-inline: auto;
+    padding-inline: 16px;
+  }
+
   @media (min-width: 768px) {
     .shell {
       padding-inline: 24px;
+    }
+
+    .header-shell {
+      padding-inline: 20px;
     }
   }
 
   @media (min-width: 1536px) {
     .shell {
       max-width: 1440px;
+    }
+
+    .header-shell {
+      max-width: 1520px;
     }
   }
 

@@ -13,7 +13,7 @@ export function UtilityBar({ settings }: { settings: PublicSettings }) {
 
     return (
         <div className="hidden border-b border-line bg-white lg:block">
-            <div className="shell flex h-9 items-center justify-between gap-4 text-[11.5px] text-ink-soft">
+            <div className="header-shell flex h-9 items-center justify-between gap-4 text-[11.5px] text-ink-soft">
                 <p className="flex items-center gap-1.5 font-medium">
                     <ShieldCheck className="h-3.5 w-3.5 text-navy-600" aria-hidden />
                     <span className="text-ink">{message}</span>

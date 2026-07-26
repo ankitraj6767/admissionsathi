@@ -34,16 +34,16 @@ export async function SiteHeader() {
     const phone = readString(settings, 'contact.phone', '');
 
     return (
-        <header>
+        <header className="sticky top-0 z-50">
             <UtilityBar settings={settings} />
 
             <HeaderShell>
-                <div className="shell flex h-16 items-center justify-between gap-3">
+                <div className="header-shell flex h-16 items-center justify-between gap-3">
                     <BrandLogo />
 
                     <DesktopNav items={items} />
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex shrink-0 items-center gap-2">
                         <HeaderSearch />
 
                         <UserMenu
@@ -61,7 +61,7 @@ export async function SiteHeader() {
 
                         <Link
                             href="/book-counselling"
-                            className="hidden h-10 items-center gap-2 rounded-[10px] bg-navy px-4 text-[13px] font-bold text-white shadow-[0_8px_18px_-12px_rgba(7,49,116,0.9)] transition-colors hover:bg-navy-800 md:inline-flex"
+                            className="hidden h-10 shrink-0 items-center gap-2 whitespace-nowrap rounded-[10px] bg-navy px-3.5 text-[12.5px] font-bold text-white shadow-[0_8px_18px_-12px_rgba(7,49,116,0.9)] transition-colors hover:bg-navy-800 min-[1440px]:inline-flex 2xl:px-4 2xl:text-[13px]"
                         >
                             Book Free Counselling
                             <CalendarCheck className="h-4 w-4" aria-hidden />
