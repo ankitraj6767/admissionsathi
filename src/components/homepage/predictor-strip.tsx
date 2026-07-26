@@ -50,28 +50,37 @@ export function PredictorStrip({
                     ) : null}
                 </div>
 
-                <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+                {/*
+                 * This band sits in the homepage's left column, so the card row only
+                 * gets ~560px at 1440px wide. The old `xl:grid-cols-7` divided that
+                 * by the maximum card count, leaving ~90px per card and truncating
+                 * every title to "J…".
+                 *
+                 * Two changes keep titles legible: at most 4 columns (3 predictors +
+                 * the "More" card), and the icon sits above the title so the label
+                 * gets the full card width and wraps instead of clipping. Extra cards
+                 * from a higher admin limit wrap to a second row rather than shrink.
+                 */}
+                <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-4">
                     {predictors.slice(0, config.limit).map((predictor) => (
                         <li key={String(predictor._id)}>
                             <Link
                                 href={`/predictors/${predictor.slug}`}
-                                className="group flex h-full min-h-[104px] flex-col justify-between rounded-[12px] bg-white p-2.5 text-left transition-transform duration-300 hover:-translate-y-0.5"
+                                className="group flex h-full min-h-[112px] flex-col justify-between gap-2 rounded-[12px] bg-white p-2.5 text-left transition-transform duration-300 hover:-translate-y-0.5"
                             >
-                                <span className="flex items-start gap-1.5">
+                                <span className="block">
                                     <span
                                         className={cn(
-                                            'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-[8px]',
+                                            'inline-flex h-7 w-7 items-center justify-center rounded-[8px]',
                                             iconTone[predictor.themeColor] ?? iconTone.navy,
                                         )}
                                     >
                                         <Icon name={predictor.icon} className="h-3.5 w-3.5" />
                                     </span>
-                                    <span className="min-w-0">
-                                        <span className="block truncate text-[11.5px] font-extrabold leading-tight text-ink">
-                                            {predictor.examShortName ?? predictor.name}
-                                        </span>
-                                        <span className="block text-[9px] font-medium text-ink-soft">Predictor</span>
+                                    <span className="mt-1.5 block text-[11.5px] font-extrabold leading-tight text-ink">
+                                        {predictor.examShortName ?? predictor.name}
                                     </span>
+                                    <span className="block text-[9px] font-medium text-ink-soft">Predictor</span>
                                 </span>
                                 <span className="mt-2 inline-flex items-center gap-1 self-start rounded-[7px] border border-orange-200 bg-orange-50 px-2 py-1 text-[9.5px] font-bold text-orange-700 transition-colors group-hover:bg-orange group-hover:text-white">
                                     {predictor.ctaLabel ?? 'Check Now'}

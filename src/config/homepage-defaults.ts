@@ -127,7 +127,8 @@ export const HOMEPAGE_SECTION_DRAFTS: HomepageSectionDraft[] = [
         ctaLabel: 'View All Predictors',
         ctaUrl: '/predictors',
         config: {
-            limit: 6,
+            // 4 predictors + the "More" card fills one row of 5 on desktop.
+            limit: 4,
             predictorSlugs: [],
             moreCardLabel: 'More Predictors',
             moreCardCtaLabel: 'View All',

@@ -74,7 +74,12 @@ export const compareCollegesConfigSchema = z.object({
 
 /** college_predictor */
 export const collegePredictorConfigSchema = z.object({
-    limit: z.number().int().min(1).max(12).default(6),
+    /**
+     * Cards shown on the navy strip, excluding the trailing "More" card.
+     * 4 keeps a single row of 5 on desktop with titles fully legible; higher
+     * values still render, wrapping onto a second row rather than shrinking.
+     */
+    limit: z.number().int().min(1).max(8).default(4),
     predictorSlugs: z.array(z.string().max(140)).max(12).default([]),
     moreCardLabel: z.string().max(60).default('More Predictors'),
     moreCardCtaLabel: z.string().max(40).default('View All'),
