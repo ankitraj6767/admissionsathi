@@ -16,10 +16,12 @@ export function MobileNav({
     items,
     phone,
     isAuthenticated,
+    isStaff,
 }: {
     items: NavNode[];
     phone?: string;
     isAuthenticated: boolean;
+    isStaff: boolean;
 }) {
     const [open, setOpen] = useState(false);
     const [expanded, setExpanded] = useState<string | null>(null);
@@ -154,9 +156,24 @@ export function MobileNav({
                                     <Button asChild variant="primary" full size="md">
                                         <Link href="/book-counselling">Book Free Counselling</Link>
                                     </Button>
+                                    {isStaff ? (
+                                        <Button asChild variant="navy" full size="md">
+                                            <Link href="/admin">
+                                                <Icon name="Shield" className="h-4 w-4" />
+                                                Admin Dashboard
+                                            </Link>
+                                        </Button>
+                                    ) : null}
                                     <Button asChild variant="outline" full size="md">
                                         <Link href={isAuthenticated ? '/dashboard' : '/login'}>
-                                            {isAuthenticated ? 'My Dashboard' : 'Login / Sign up'}
+                                            {isAuthenticated ? (
+                                                <>
+                                                    <Icon name="LayoutDashboard" className="h-4 w-4" />
+                                                    {isStaff ? 'User Dashboard' : 'My Dashboard'}
+                                                </>
+                                            ) : (
+                                                'Login / Sign up'
+                                            )}
                                         </Link>
                                     </Button>
                                     {phone ? (

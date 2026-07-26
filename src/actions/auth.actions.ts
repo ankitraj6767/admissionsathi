@@ -129,12 +129,12 @@ export async function loginAction(input: unknown): Promise<ActionResult<{ redire
             throw error;
         }
 
-        return succeed({ redirectTo: data.callbackUrl ?? '/dashboard' }, 'Signed in successfully.');
+        return succeed({ redirectTo: data.callbackUrl || '/account' }, 'Signed in successfully.');
     });
 }
 
 export async function googleSignInAction(): Promise<void> {
-    await signIn('google', { redirectTo: '/dashboard' });
+    await signIn('google', { redirectTo: '/account' });
 }
 
 export async function requireLoginRedirect(path: string): Promise<never> {

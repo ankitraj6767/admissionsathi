@@ -170,6 +170,15 @@ export function AdminShell({ actor, badges, children }: AdminShellProps) {
                         <div className="ml-auto flex items-center gap-2">
                             <Link
                                 href="/"
+                                aria-label="Go to public website"
+                                title="Go to public website"
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-[9px] border border-line text-ink hover:border-navy-200 sm:hidden"
+                            >
+                                <Icon name="ExternalLink" className="h-3.5 w-3.5" />
+                            </Link>
+
+                            <Link
+                                href="/"
                                 target="_blank"
                                 className="hidden h-9 items-center gap-1.5 rounded-[9px] border border-line px-3 text-[12px] font-semibold text-ink hover:border-navy-200 sm:inline-flex"
                             >

@@ -67,7 +67,12 @@ export async function SiteHeader() {
                             <CalendarCheck className="h-4 w-4" aria-hidden />
                         </Link>
 
-                        <MobileNav items={items} phone={phone} isAuthenticated={viewer.isAuthenticated} />
+                        <MobileNav
+                            items={items}
+                            phone={phone}
+                            isAuthenticated={viewer.isAuthenticated}
+                            isStaff={viewer.isStaff}
+                        />
                     </div>
                 </div>
             </HeaderShell>

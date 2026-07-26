@@ -17,7 +17,7 @@ function toStringArray(value: unknown, fallback: string[]): string[] {
 export const authConfig = {
     pages: {
         signIn: '/login',
-        newUser: '/dashboard',
+        newUser: '/account',
         error: '/login',
     },
     session: {

@@ -28,9 +28,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
             />
 
             <div className="shell py-6">
-                <div className="grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
+                <div className="grid min-w-0 gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
                     <DashboardNav />
-                    <div>{children}</div>
+                    <div className="min-w-0">{children}</div>
                 </div>
             </div>
         </>

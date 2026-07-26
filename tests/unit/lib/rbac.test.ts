@@ -5,6 +5,7 @@ import {
     can,
     canAll,
     canAny,
+    getAuthenticatedHomePath,
     hasRole,
     isStaff,
     resolvePermissions,
@@ -136,6 +137,19 @@ describe('isStaff', () => {
         expect(isStaff(actor({ roles: ['ghost_role'] }))).toBe(false);
         expect(isStaff(actor({ roles: [] }))).toBe(false);
         expect(isStaff(null)).toBe(false);
+    });
+});
+
+describe('getAuthenticatedHomePath', () => {
+    it('routes staff roles to the admin workspace', () => {
+        expect(getAuthenticatedHomePath(['super_admin'])).toBe('/admin');
+        expect(getAuthenticatedHomePath(['student', 'analyst'])).toBe('/admin');
+    });
+
+    it('routes students and unknown roles to the personal dashboard', () => {
+        expect(getAuthenticatedHomePath(['student'])).toBe('/dashboard');
+        expect(getAuthenticatedHomePath(['unknown_role'])).toBe('/dashboard');
+        expect(getAuthenticatedHomePath([])).toBe('/dashboard');
     });
 });
 

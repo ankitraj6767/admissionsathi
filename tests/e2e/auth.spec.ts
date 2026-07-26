@@ -18,7 +18,7 @@ test.describe('authentication pages', () => {
         await page.getByLabel(/full name/i).first().fill('A');
         await page.getByLabel(/email/i).first().fill('not-an-email');
         await page.getByLabel(/^password/i).first().fill('weak');
-        await page.getByRole('button', { name: /sign up|create account|register|continue/i }).first().click();
+        await page.getByRole('button', { name: /sign up|create.*account|register|continue/i }).first().click();
 
         const text = (await page.locator('main').innerText()).toLowerCase();
         expect(text).toMatch(/valid email|enter your full name|at least 8 characters|uppercase|number/);
@@ -55,6 +55,14 @@ test.describe('authentication pages', () => {
 
         expect(pathname, `expected a redirect away from /admin, got ${page.url()}`).not.toBe('/admin');
         expect(pathname).toMatch(/^\/(login|403)/);
+    });
+
+    test('/account requires authentication before role routing', async ({ page }) => {
+        await gotoStable(page, '/account');
+        await page.waitForURL(/\/login/, { timeout: 20_000 });
+
+        const url = new URL(page.url());
+        expect(url.pathname).toBe('/login');
     });
 
     test('an admin deep link keeps the callback URL', async ({ page }) => {

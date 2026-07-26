@@ -20,8 +20,11 @@ export function DashboardNav() {
     const pathname = usePathname();
 
     return (
-        <aside className="lg:sticky lg:top-24 lg:self-start">
-            <nav aria-label="Dashboard" className="rounded-panel border border-line bg-white p-2 shadow-card">
+        <aside className="min-w-0 max-w-full lg:sticky lg:top-24 lg:self-start">
+            <nav
+                aria-label="Dashboard"
+                className="w-full min-w-0 max-w-full overflow-hidden rounded-panel border border-line bg-white p-2 shadow-card"
+            >
                 <ul className="flex gap-1 overflow-x-auto no-scrollbar lg:flex-col lg:overflow-visible">
                     {LINKS.map((link) => {
                         const active = pathname === link.href;

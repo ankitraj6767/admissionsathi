@@ -52,6 +52,11 @@ export function isStaff(actor: Pick<SessionActor, 'roles'> | null): boolean {
     return actor.roles.some((r) => isStaffRole(r));
 }
 
+/** Default signed-in landing page without weakening either route's own guards. */
+export function getAuthenticatedHomePath(roles: string[]): '/admin' | '/dashboard' {
+    return roles.some((role) => isStaffRole(role)) ? '/admin' : '/dashboard';
+}
+
 export function hasRole(actor: Pick<SessionActor, 'roles'> | null, role: RoleKey): boolean {
     if (!actor) return false;
     return actor.roles.includes(role);
