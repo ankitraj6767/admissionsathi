@@ -1,17 +1,32 @@
 import 'server-only';
 import { Types } from 'mongoose';
-import { connectToDatabase } from '@/db/connect';
-import { AnalyticsEvent, SearchQuery } from '@/db/models/system.model';
-import { Lead } from '@/db/models/lead.model';
-import { College } from '@/db/models/college.model';
-import { Course } from '@/db/models/course.model';
-import { Exam } from '@/db/models/exam.model';
-import { User } from '@/db/models/user.model';
-import { PredictionSession } from '@/db/models/predictor.model';
-import { CounsellingBooking } from '@/db/models/counselling.model';
-import { Article } from '@/db/models/content.model';
-import { Review } from '@/db/models/content.model';
-import { ANALYTICS_EVENTS } from '@/lib/analytics/events';
+import {
+    aggregateEventCounts,
+    aggregateEventTrend,
+    aggregateTopPages,
+    aggregateTopSearchTerms,
+    aggregateZeroResultTerms,
+} from '@/db/repositories/analytics.repository';
+import { countSearchQueries, createAnalyticsEvent } from '@/db/repositories/system.repository';
+import {
+    countPublishedColleges,
+    incrementCollegeViewCount,
+} from '@/db/repositories/college.repository';
+import {
+    countPublishedCourses,
+    incrementCourseViewCount,
+} from '@/db/repositories/course.repository';
+import { countPublishedExams, incrementExamViewCount } from '@/db/repositories/exam.repository';
+import {
+    countDraftArticles,
+    countPendingReviews,
+    countPublishedArticles,
+    incrementArticleViewCount,
+} from '@/db/repositories/content.repository';
+import { countUsers } from '@/db/repositories/user.repository';
+import { countLeads } from '@/db/repositories/lead.repository';
+import { countBookings, countCounsellors } from '@/db/repositories/counsellor.repository';
+import { countPredictorSessions } from '@/db/repositories/predictor.repository';
 import { logger } from '@/lib/logger';
 
 export interface RecordEventInput {
@@ -30,8 +45,7 @@ export interface RecordEventInput {
 
 export async function recordAnalyticsEvent(input: RecordEventInput): Promise<void> {
     try {
-        await connectToDatabase();
-        await AnalyticsEvent.create({
+        await createAnalyticsEvent({
             name: input.name,
             path: input.path,
             entityType: input.entityType,
@@ -61,13 +75,10 @@ export async function incrementViewCount(
     id: string,
 ): Promise<void> {
     try {
-        await connectToDatabase();
-        const filter = { _id: id };
-        const update = { $inc: { viewCount: 1 } };
-        if (entity === 'college') await College.updateOne(filter, update).exec();
-        else if (entity === 'course') await Course.updateOne(filter, update).exec();
-        else if (entity === 'exam') await Exam.updateOne(filter, update).exec();
-        else await Article.updateOne(filter, update).exec();
+        if (entity === 'college') await incrementCollegeViewCount(id);
+        else if (entity === 'course') await incrementCourseViewCount(id);
+        else if (entity === 'exam') await incrementExamViewCount(id);
+        else await incrementArticleViewCount(id);
     } catch {
         /* counters are best-effort */
     }
@@ -109,9 +120,6 @@ const startOfToday = () => {
 const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000);
 
 export async function getDashboardOverview(): Promise<DashboardOverview> {
-    await connectToDatabase();
-    const { Counsellor } = await import('@/db/models/counselling.model');
-
     const [
         users,
         colleges,
@@ -135,30 +143,30 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
         pendingReviews,
         draftArticles,
     ] = await Promise.all([
-        User.countDocuments({ isDeleted: { $ne: true } }).exec(),
-        College.countDocuments({ status: 'published' }).exec(),
-        Course.countDocuments({ status: 'published' }).exec(),
-        Exam.countDocuments({ status: 'published' }).exec(),
-        Article.countDocuments({ status: 'published' }).exec(),
-        Counsellor.countDocuments({ status: 'active' }).exec(),
-        Lead.countDocuments({}).exec(),
-        Lead.countDocuments({ createdAt: { $gte: startOfToday() } }).exec(),
-        Lead.countDocuments({ createdAt: { $gte: daysAgo(7) } }).exec(),
-        Lead.countDocuments({ status: 'new' }).exec(),
-        Lead.countDocuments({ status: 'converted' }).exec(),
-        CounsellingBooking.countDocuments({}).exec(),
-        CounsellingBooking.countDocuments({
+        countUsers({ isDeleted: { $ne: true } }),
+        countPublishedColleges(),
+        countPublishedCourses(),
+        countPublishedExams(),
+        countPublishedArticles(),
+        countCounsellors({ status: 'active' }),
+        countLeads({}),
+        countLeads({ createdAt: { $gte: startOfToday() } }),
+        countLeads({ createdAt: { $gte: daysAgo(7) } }),
+        countLeads({ status: 'new' }),
+        countLeads({ status: 'converted' }),
+        countBookings({}),
+        countBookings({
             scheduledAt: { $gte: new Date() },
             status: { $in: ['requested', 'confirmed', 'rescheduled'] },
-        }).exec(),
-        CounsellingBooking.countDocuments({ status: 'completed' }).exec(),
-        PredictionSession.countDocuments({}).exec(),
-        PredictionSession.countDocuments({ createdAt: { $gte: daysAgo(7) } }).exec(),
-        SearchQuery.countDocuments({}).exec(),
-        SearchQuery.countDocuments({ zeroResults: true }).exec(),
-        SearchQuery.countDocuments({ createdAt: { $gte: daysAgo(7) } }).exec(),
-        Review.countDocuments({ moderationStatus: 'pending' }).exec(),
-        Article.countDocuments({ status: { $in: ['draft', 'in_review'] } }).exec(),
+        }),
+        countBookings({ status: 'completed' }),
+        countPredictorSessions({}),
+        countPredictorSessions({ createdAt: { $gte: daysAgo(7) } }),
+        countSearchQueries({}),
+        countSearchQueries({ zeroResults: true }),
+        countSearchQueries({ createdAt: { $gte: daysAgo(7) } }),
+        countPendingReviews(),
+        countDraftArticles(),
     ]);
 
     return {
@@ -182,63 +190,23 @@ export async function getEventTrend(
     eventName: string,
     days = 14,
 ): Promise<{ date: string; count: number }[]> {
-    await connectToDatabase();
-    const rows = await AnalyticsEvent.aggregate<{ _id: string; count: number }>([
-        { $match: { name: eventName, createdAt: { $gte: daysAgo(days) } } },
-        {
-            $group: {
-                _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt', timezone: 'Asia/Kolkata' } },
-                count: { $sum: 1 },
-            },
-        },
-        { $sort: { _id: 1 } },
-    ]).exec();
+    const rows = await aggregateEventTrend(eventName, daysAgo(days));
     return rows.map((r) => ({ date: r._id, count: r.count }));
 }
 
 export async function getTopPages(days = 30, limit = 10) {
-    await connectToDatabase();
-    return AnalyticsEvent.aggregate<{ _id: string; count: number }>([
-        { $match: { name: ANALYTICS_EVENTS.pageView, createdAt: { $gte: daysAgo(days) } } },
-        { $group: { _id: '$path', count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
-        { $limit: limit },
-    ]).exec();
+    return aggregateTopPages(daysAgo(days), limit);
 }
 
 export async function getTopSearchTerms(days = 30, limit = 10) {
-    await connectToDatabase();
-    return SearchQuery.aggregate<{ _id: string; count: number; zero: number }>([
-        { $match: { createdAt: { $gte: daysAgo(days) } } },
-        {
-            $group: {
-                _id: '$normalizedTerm',
-                count: { $sum: 1 },
-                zero: { $sum: { $cond: ['$zeroResults', 1, 0] } },
-            },
-        },
-        { $sort: { count: -1 } },
-        { $limit: limit },
-    ]).exec();
+    return aggregateTopSearchTerms(daysAgo(days), limit);
 }
 
 export async function getZeroResultTerms(days = 30, limit = 10) {
-    await connectToDatabase();
-    return SearchQuery.aggregate<{ _id: string; count: number }>([
-        { $match: { zeroResults: true, createdAt: { $gte: daysAgo(days) } } },
-        { $group: { _id: '$normalizedTerm', count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
-        { $limit: limit },
-    ]).exec();
+    return aggregateZeroResultTerms(daysAgo(days), limit);
 }
 
 export async function getEventCounts(days = 30): Promise<{ name: string; count: number }[]> {
-    await connectToDatabase();
-    const rows = await AnalyticsEvent.aggregate<{ _id: string; count: number }>([
-        { $match: { createdAt: { $gte: daysAgo(days) } } },
-        { $group: { _id: '$name', count: { $sum: 1 } } },
-        { $sort: { count: -1 } },
-        { $limit: 25 },
-    ]).exec();
+    const rows = await aggregateEventCounts(daysAgo(days), 25);
     return rows.map((r) => ({ name: r._id, count: r.count }));
 }

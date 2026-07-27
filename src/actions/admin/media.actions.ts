@@ -1,11 +1,8 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { Types } from 'mongoose';
 import { z } from 'zod';
-import { connectToDatabase } from '@/db/connect';
-import { MediaAsset } from '@/db/models/site.model';
-import { deleteFile } from '@/lib/storage';
+import { removeAsset, updateAssetMetadata } from '@/services/media.service';
 import { requirePermission } from '@/lib/auth/session';
 import { recordAudit } from '@/services/audit.service';
 import { NotFoundError, fail, runAction, succeed } from '@/lib/action-helpers';
@@ -15,33 +12,19 @@ import type { ActionResult } from '@/types/common';
 export async function deleteMediaAction(id: string): Promise<ActionResult<{ id: string }>> {
     return runAction({ action: 'admin.media.delete' }, async () => {
         const actor = await requirePermission('media.manage');
-        await connectToDatabase();
 
-        const asset = await MediaAsset.findById(id).exec();
-        if (!asset) throw new NotFoundError('Media asset not found.');
-
-        if (asset.usageCount > 0) {
-            return fail(
-                `This asset is used in ${asset.usageCount} place(s). Replace those references before deleting.`,
-                'CONFLICT',
-            );
+        const result = await removeAsset(id, actor.id);
+        if (!result.ok) {
+            if (result.code === 'NOT_FOUND') throw new NotFoundError(result.reason);
+            return fail(result.reason, 'CONFLICT');
         }
-
-        await deleteFile({ provider: asset.provider, providerPublicId: asset.providerPublicId }).catch(
-            () => undefined,
-        );
-
-        asset.isDeleted = true;
-        asset.deletedAt = new Date();
-        asset.deletedBy = new Types.ObjectId(actor.id);
-        await asset.save();
 
         await recordAudit({
             actor,
             action: 'media.delete',
             entity: 'MediaAsset',
             entityId: id,
-            entityLabel: asset.originalName,
+            entityLabel: result.originalName,
         });
 
         revalidatePath('/admin/media');
@@ -62,18 +45,12 @@ export async function updateMediaAction(input: unknown): Promise<ActionResult<{ 
         const actor = await requirePermission('media.manage');
         const data = updateMediaSchema.parse(input);
 
-        await connectToDatabase();
-        await MediaAsset.updateOne(
-            { _id: data.id },
-            {
-                $set: {
-                    altText: data.altText,
-                    caption: data.caption,
-                    tags: data.tags,
-                    folder: data.folder,
-                },
-            },
-        ).exec();
+        await updateAssetMetadata(data.id, {
+            altText: data.altText,
+            caption: data.caption,
+            tags: data.tags,
+            folder: data.folder,
+        });
 
         await recordAudit({
             actor,

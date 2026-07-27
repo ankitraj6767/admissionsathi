@@ -2,20 +2,17 @@ import Link from 'next/link';
 import { SectionCard } from '@/components/shared/content-blocks';
 import { Badge, EmptyState, IconTile } from '@/components/ui/primitives';
 import { requireAuthPage } from '@/lib/auth/session';
-import { connectToDatabase } from '@/db/connect';
-import { SavedItem } from '@/db/models/system.model';
+import { listSavedItems } from '@/services/saved.service';
 import { getBookingsForUser } from '@/services/counselling.service';
 import { listUserPredictionSessions } from '@/services/predictor.service';
 import { listUserLoanCalculations } from '@/services/finance.service';
-import { toPlain } from '@/db/repositories/base.repository';
 import { formatCurrency, formatDate } from '@/lib/utils';
 
 export default async function DashboardOverviewPage() {
     const actor = await requireAuthPage();
-    await connectToDatabase();
 
     const [saved, bookings, predictions, loans] = await Promise.all([
-        SavedItem.find({ user: actor.id }).sort({ createdAt: -1 }).limit(6).lean().exec().then(toPlain),
+        listSavedItems(actor.id, { limit: 6 }),
         getBookingsForUser(actor.id),
         listUserPredictionSessions(actor.id, 5),
         listUserLoanCalculations(actor.id, 5),
@@ -118,9 +115,9 @@ export default async function DashboardOverviewPage() {
                     ) : (
                         <ul className="space-y-1.5">
                             {saved.map((item) => (
-                                <li key={String(item._id)}>
+                                <li key={item.id}>
                                     <Link
-                                        href={`/${item.entityType === 'college' ? 'colleges' : item.entityType === 'course' ? 'courses' : item.entityType === 'exam' ? 'exams' : 'articles'}/${item.entitySlug}`}
+                                        href={item.href}
                                         className="flex items-center justify-between gap-2 rounded-[9px] px-2 py-1.5 hover:bg-muted"
                                     >
                                         <span className="truncate text-[12.5px] font-semibold text-ink">{item.entityName}</span>

@@ -3,8 +3,7 @@
 import { redirect } from 'next/navigation';
 import { AuthError } from 'next-auth';
 import { signIn, signOut } from '@/lib/auth';
-import { connectToDatabase } from '@/db/connect';
-import { User } from '@/db/models/user.model';
+import { createUser, emailExists } from '@/db/repositories/user.repository';
 import { hashPassword } from '@/lib/auth/password';
 import { loginSchema, signUpSchema } from '@/schemas/auth.schema';
 import { RATE_LIMITS, clientFingerprint, rateLimit } from '@/lib/rate-limit';
@@ -27,10 +26,8 @@ export async function signUpAction(input: unknown): Promise<ActionResult<{ email
         }
 
         const data = signUpSchema.parse(input);
-        await connectToDatabase();
 
-        const existing = await User.findOne({ email: data.email }).select('_id').lean().exec();
-        if (existing) {
+        if (await emailExists(data.email)) {
             return fail('An account with this email already exists. Try logging in instead.', 'DUPLICATE', {
                 email: ['Email already registered'],
             });
@@ -39,7 +36,7 @@ export async function signUpAction(input: unknown): Promise<ActionResult<{ email
         const { ipHash } = await clientFingerprint();
         const passwordHash = await hashPassword(data.password);
 
-        const user = await User.create({
+        const userId = await createUser({
             name: data.name,
             email: data.email,
             phone: data.phone || undefined,
@@ -56,7 +53,7 @@ export async function signUpAction(input: unknown): Promise<ActionResult<{ email
         await recordAudit({
             action: 'user.signup',
             entity: 'User',
-            entityId: String(user._id),
+            entityId: userId,
             entityLabel: data.email,
             newValues: { email: data.email, roles: ['student'], ipHash },
         });
@@ -64,7 +61,7 @@ export async function signUpAction(input: unknown): Promise<ActionResult<{ email
         await queueNotification({
             event: 'account.welcome',
             channel: 'email',
-            userId: String(user._id),
+            userId,
             title: 'Welcome to Admission Sathi',
             body: `Hi ${data.name}, your Admission Sathi account is ready. Save colleges, run predictors and book free counselling any time.`,
             actionUrl: '/dashboard',

@@ -3,10 +3,7 @@ import Link from 'next/link';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { SectionCard } from '@/components/shared/content-blocks';
 import { Badge, EmptyState } from '@/components/ui/primitives';
-import { getTopSearchTerms, getZeroResultTerms } from '@/services/analytics.service';
-import { connectToDatabase } from '@/db/connect';
-import { SearchQuery, SearchSynonym } from '@/db/models/system.model';
-import { toPlain } from '@/db/repositories/base.repository';
+import { getSearchInsights } from '@/services/search.service';
 import { requirePermissionPage } from '@/lib/auth/session';
 import { formatRelativeTime } from '@/lib/utils';
 
@@ -21,14 +18,8 @@ export default async function AdminSearchPage({
 }) {
     await requirePermissionPage('analytics.view');
     const params = await searchParams;
-    await connectToDatabase();
 
-    const [topTerms, zeroTerms, recent, synonyms] = await Promise.all([
-        getTopSearchTerms(30, 15),
-        getZeroResultTerms(30, 15),
-        SearchQuery.find().sort({ createdAt: -1 }).limit(20).lean().exec().then(toPlain),
-        SearchSynonym.find().sort({ term: 1 }).limit(50).lean().exec().then(toPlain),
-    ]);
+    const { topTerms, zeroTerms, recent, synonyms } = await getSearchInsights();
 
     return (
         <>

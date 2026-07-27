@@ -1,10 +1,25 @@
 import 'server-only';
-import { connectToDatabase } from '@/db/connect';
-import { EmailTemplate, Notification, WhatsAppTemplate } from '@/db/models/system.model';
-import { User } from '@/db/models/user.model';
+import type { FilterQuery } from 'mongoose';
+import {
+    claimDueNotifications,
+    createNotification,
+    findEmailTemplate,
+    findWhatsAppTemplate,
+    listNotificationsForUser,
+    markNotificationFailed,
+    markNotificationReadForUser,
+    markNotificationSent,
+    notificationStateCounts,
+    paginateNotifications,
+} from '@/db/repositories/system.repository';
+import { findUserContact } from '@/db/repositories/user.repository';
+import { toPlain } from '@/db/repositories/base.repository';
+import { renderEmailHtml } from '@/emails/layout';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
 import type { NotificationChannel } from '@/config/constants';
+import type { NotificationDoc } from '@/db/models/system.model';
+import type { Paginated } from '@/types/common';
 
 /* ------------------------------------------------------------------ *
  * Channel adapters
@@ -133,8 +148,7 @@ export interface QueueInput {
 
 export async function queueNotification(input: QueueInput): Promise<void> {
     try {
-        await connectToDatabase();
-        await Notification.create({
+        await createNotification({
             user: input.userId,
             audience: input.audience ?? (input.userId ? 'user' : 'broadcast'),
             event: input.event,
@@ -168,14 +182,15 @@ export function renderTemplate(template: string, variables: Record<string, strin
 }
 
 export async function getEmailTemplate(key: string) {
-    await connectToDatabase();
-    return EmailTemplate.findOne({ key, status: 'active' }).lean().exec();
+    return findEmailTemplate(key);
 }
 
 export async function getWhatsappTemplate(key: string) {
-    await connectToDatabase();
-    return WhatsAppTemplate.findOne({ key, status: 'active' }).lean().exec();
+    return findWhatsAppTemplate(key);
 }
+
+/** A message is retried up to four times before it is parked as failed. */
+const MAX_ATTEMPTS = 4;
 
 /** Processes queued notifications. Called by the cron Route Handler. */
 export async function processNotificationQueue(limit = 25): Promise<{
@@ -183,37 +198,28 @@ export async function processNotificationQueue(limit = 25): Promise<{
     sent: number;
     failed: number;
 }> {
-    await connectToDatabase();
-
-    const due = await Notification.find({
-        state: 'queued',
-        scheduledFor: { $lte: new Date() },
-        attempts: { $lt: 4 },
-    })
-        .sort({ scheduledFor: 1 })
-        .limit(limit)
-        .exec();
+    // Claiming marks the batch as processing and increments its attempt counter,
+    // so a second worker run cannot pick the same rows up again.
+    const due = await claimDueNotifications(limit, MAX_ATTEMPTS);
 
     let sent = 0;
     let failed = 0;
 
     for (const notification of due) {
-        notification.state = 'processing';
-        notification.attempts += 1;
-        await notification.save();
+        const retry = notification.attempts < MAX_ATTEMPTS;
+        // exponential backoff
+        const retryAt = new Date(Date.now() + 2 ** notification.attempts * 60_000);
 
         try {
             if (notification.channel === 'in_app') {
-                notification.state = 'sent';
-                notification.sentAt = new Date();
-                await notification.save();
+                await markNotificationSent(notification._id);
                 sent += 1;
                 continue;
             }
 
             let to = (notification.payload as { to?: string } | undefined)?.to;
             if (!to && notification.user) {
-                const user = await User.findById(notification.user).select('email phone').lean().exec();
+                const user = await findUserContact(notification.user);
                 to = notification.channel === 'email' ? user?.email : user?.phone;
             }
 
@@ -224,25 +230,34 @@ export async function processNotificationQueue(limit = 25): Promise<{
                 to,
                 subject: notification.title,
                 body: notification.body,
+                // Email gets the branded shell; SMS and WhatsApp stay plain text.
+                html:
+                    notification.channel === 'email'
+                        ? renderEmailHtml({
+                            title: notification.title,
+                            body: notification.body,
+                            action: notification.actionUrl
+                                ? { label: 'Open Admission Sathi', url: notification.actionUrl }
+                                : undefined,
+                            showPreferencesLink: Boolean(notification.user),
+                        })
+                        : undefined,
             });
 
             if (result.ok) {
-                notification.state = 'sent';
-                notification.sentAt = new Date();
+                await markNotificationSent(notification._id);
                 sent += 1;
             } else {
-                notification.state = notification.attempts >= 4 ? 'failed' : 'queued';
-                notification.lastError = result.error;
-                // exponential backoff
-                notification.scheduledFor = new Date(Date.now() + 2 ** notification.attempts * 60_000);
+                await markNotificationFailed(notification._id, result.error, retry, retryAt);
                 failed += 1;
             }
-            await notification.save();
         } catch (error) {
-            notification.state = notification.attempts >= 4 ? 'failed' : 'queued';
-            notification.lastError = error instanceof Error ? error.message : String(error);
-            notification.scheduledFor = new Date(Date.now() + 2 ** notification.attempts * 60_000);
-            await notification.save();
+            await markNotificationFailed(
+                notification._id,
+                error instanceof Error ? error.message : String(error),
+                retry,
+                retryAt,
+            );
             failed += 1;
         }
     }
@@ -250,19 +265,45 @@ export async function processNotificationQueue(limit = 25): Promise<{
     return { processed: due.length, sent, failed };
 }
 
+/* ------------------------------------------------------------------ *
+ * Admin queue screen
+ * ------------------------------------------------------------------ */
+
+export interface NotificationQueueQuery {
+    state?: string;
+    channel?: string;
+    page?: string;
+}
+
+export interface NotificationQueueData {
+    result: Paginated<NotificationDoc>;
+    counts: { _id: string; count: number }[];
+}
+
+/**
+ * Filtered queue page plus the per-state totals rendered as filter chips.
+ * Counts are unfiltered on purpose so the chips keep showing every state
+ * even while one of them is selected.
+ */
+export async function getNotificationQueue(
+    query: NotificationQueueQuery,
+): Promise<NotificationQueueData> {
+    const filter: FilterQuery<NotificationDoc> = {};
+    if (query.state) filter.state = query.state;
+    if (query.channel) filter.channel = query.channel;
+
+    const [result, counts] = await Promise.all([
+        paginateNotifications({ filter, page: Number(query.page) || 1, pageSize: 25 }),
+        notificationStateCounts(),
+    ]);
+
+    return { result: toPlain(result), counts };
+}
+
 export async function listUserNotifications(userId: string, limit = 20) {
-    await connectToDatabase();
-    return Notification.find({ user: userId, channel: 'in_app' })
-        .sort({ createdAt: -1 })
-        .limit(limit)
-        .lean()
-        .exec();
+    return listNotificationsForUser(userId, limit);
 }
 
 export async function markNotificationRead(userId: string, notificationId: string): Promise<void> {
-    await connectToDatabase();
-    await Notification.updateOne(
-        { _id: notificationId, user: userId },
-        { $set: { readAt: new Date() } },
-    ).exec();
+    await markNotificationReadForUser(userId, notificationId);
 }

@@ -6,8 +6,23 @@ import {
     type CounsellingBookingDoc,
     type CounsellorDoc,
 } from '@/db/models/counselling.model';
-import { findLean, findOneLean, paginate } from './base.repository';
+import {
+    countDocs,
+    findLean,
+    findOneLean,
+    listSlugRows,
+    paginate,
+    type SlugRow,
+} from './base.repository';
+import type { FilterQuery } from 'mongoose';
 import type { Paginated } from '@/types/common';
+
+/** Active, indexable and not soft-deleted — what the sitemap may advertise. */
+const ACTIVE_SITEMAP_FILTER = {
+    status: 'active',
+    isDeleted: { $ne: true },
+    'seo.noIndex': { $ne: true },
+} as const;
 
 export async function listCounsellors(options?: {
     limit?: number;
@@ -27,6 +42,19 @@ export async function listCounsellors(options?: {
 
 export async function getCounsellorBySlug(slug: string): Promise<CounsellorDoc | null> {
     return findOneLean<CounsellorDoc>(Counsellor, { slug, status: 'active' });
+}
+
+export async function countCounsellors(filter: FilterQuery<CounsellorDoc> = {}): Promise<number> {
+    return countDocs<CounsellorDoc>(Counsellor, filter);
+}
+
+/** Indexable counsellor profile slugs for the sitemap. */
+export async function listCounsellorSitemapSlugs(limit: number): Promise<SlugRow[]> {
+    return listSlugRows<CounsellorDoc>(
+        Counsellor,
+        ACTIVE_SITEMAP_FILTER as FilterQuery<CounsellorDoc>,
+        { limit },
+    );
 }
 
 export async function getCounsellorById(id: string): Promise<CounsellorDoc | null> {
@@ -121,6 +149,36 @@ export async function getBookingById(id: string): Promise<CounsellingBookingDoc 
     return findOneLean<CounsellingBookingDoc>(CounsellingBooking, { _id: id });
 }
 
+/** Idempotency guard: a resubmitted booking form returns the first booking. */
+export async function findBookingByIdempotencyKey(
+    key: string,
+): Promise<CounsellingBookingDoc | null> {
+    return findOneLean<CounsellingBookingDoc>(CounsellingBooking, {
+        idempotencyKey: key,
+    } as FilterQuery<CounsellingBookingDoc>);
+}
+
+/** A booking looked up by the reference printed on the confirmation. */
+export async function findBookingByReference(
+    reference: string,
+): Promise<CounsellingBookingDoc | null> {
+    return findOneLean<CounsellingBookingDoc>(CounsellingBooking, {
+        reference,
+    } as FilterQuery<CounsellingBookingDoc>);
+}
+
+/** A signed-in student's own bookings, newest session first. */
+export async function listBookingsForUser(
+    userId: string,
+    limit = 50,
+): Promise<CounsellingBookingDoc[]> {
+    return findLean<CounsellingBookingDoc>(
+        CounsellingBooking,
+        { user: userId } as FilterQuery<CounsellingBookingDoc>,
+        { sort: { scheduledAt: -1 }, limit },
+    );
+}
+
 export async function updateBooking(
     id: string,
     update: Partial<CounsellingBookingDoc>,
@@ -134,6 +192,52 @@ export async function updateBooking(
 export async function countBookings(filter: Record<string, unknown> = {}): Promise<number> {
     await connectToDatabase();
     return CounsellingBooking.countDocuments(filter).exec();
+}
+
+/**
+ * Just the owner of a booking.
+ * Callers use it to decide whether the current visitor may reschedule or cancel,
+ * so it must stay a read of `user` only — never a full document.
+ */
+export async function findBookingOwner(
+    id: string,
+): Promise<{ id: string; userId?: string } | null> {
+    const booking = await findOneLean<CounsellingBookingDoc>(
+        CounsellingBooking,
+        { _id: id },
+        { projection: { user: 1 } },
+    );
+    if (!booking) return null;
+    return { id: String(booking._id), userId: booking.user ? String(booking.user) : undefined };
+}
+
+export async function setBookingFeedback(
+    id: string,
+    feedback: { rating: number; comment?: string; submittedAt: Date },
+): Promise<void> {
+    await connectToDatabase();
+    await CounsellingBooking.updateOne({ _id: id }, { $set: { feedback } }).exec();
+}
+
+/**
+ * Folds one session rating into a counsellor's running average.
+ * No-ops when the counsellor row is gone so feedback is never lost to an error.
+ */
+export async function addCounsellorRating(counsellorId: string, rating: number): Promise<void> {
+    await connectToDatabase();
+    const counsellor = await Counsellor.findById(counsellorId)
+        .select('rating')
+        .lean<{ rating: { average: number; count: number } }>()
+        .exec();
+    if (!counsellor) return;
+
+    const count = counsellor.rating.count + 1;
+    const average = (counsellor.rating.average * counsellor.rating.count + rating) / count;
+
+    await Counsellor.updateOne(
+        { _id: counsellorId },
+        { $set: { rating: { average: Number(average.toFixed(2)), count } } },
+    ).exec();
 }
 
 /** Slots already taken for a counsellor on a given day. */

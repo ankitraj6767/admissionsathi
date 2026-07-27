@@ -3,7 +3,7 @@ import type { FilterQuery } from 'mongoose';
 import { connectToDatabase } from '@/db/connect';
 import { Lead, LeadActivity, type LeadActivityDoc, type LeadDoc } from '@/db/models/lead.model';
 import { escapeRegex } from '@/lib/utils';
-import { findLean, paginate } from './base.repository';
+import { findLean, findOneLean, paginate } from './base.repository';
 import type { Paginated } from '@/types/common';
 
 export function normalizePhone(phone: string): string {
@@ -26,7 +26,11 @@ export async function findLeadByIdempotencyKey(key: string): Promise<LeadDoc | n
     return Lead.findOne({ idempotencyKey: key }).lean<LeadDoc>().exec();
 }
 
-/** Duplicate detection: same phone + same source within the window. */
+/**
+ * Duplicate detection: the same phone number within the window, across every
+ * source. Matching on source as well would let one student raise a fresh
+ * "new" lead from each form, which is exactly the noise counsellors flag.
+ */
 export async function findRecentDuplicate(
     phoneNormalized: string,
     windowHours = 24,
@@ -153,4 +157,25 @@ export async function leadTrend(days = 14): Promise<{ date: string; count: numbe
 export async function countLeads(filter: FilterQuery<LeadDoc> = {}): Promise<number> {
     await connectToDatabase();
     return Lead.countDocuments(filter).exec();
+}
+
+/**
+ * Enquiries submitted with a given email, for the account data export.
+ * Excludes the hashed IP and user agent — those are operational, not user data.
+ */
+export async function listLeadsForEmail(email: string, limit = 200): Promise<LeadDoc[]> {
+    return findLean<LeadDoc>(Lead, { email: email.toLowerCase() } as FilterQuery<LeadDoc>, {
+        sort: { createdAt: -1 },
+        limit,
+        projection: '-consent.ipHash -userAgent',
+    });
+}
+
+/** Existing newsletter signup for an email, used to keep subscribing idempotent. */
+export async function findNewsletterSubscription(email: string): Promise<LeadDoc | null> {
+    return findOneLean<LeadDoc>(
+        Lead,
+        { email: email.toLowerCase(), source: 'newsletter' } as FilterQuery<LeadDoc>,
+        { projection: '_id' },
+    );
 }

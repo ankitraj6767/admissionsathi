@@ -1,11 +1,21 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
-import { connectToDatabase } from '@/db/connect';
-import { FAQ } from '@/db/models/content.model';
-import { AiConversation } from '@/db/models/system.model';
+import {
+    searchArticlePassages,
+    searchFaqPassages,
+} from '@/db/repositories/content.repository';
+import {
+    aggregateAiConversationTurns,
+    appendAiMessages,
+    countAiConversations,
+    listRecentAiConversations,
+    markAiConversationHandedOff,
+} from '@/db/repositories/system.repository';
+import { listUserNamesByIds } from '@/db/repositories/user.repository';
+import { findSettingValue } from '@/db/repositories/settings.repository';
 import { env } from '@/lib/env';
 import { logger } from '@/lib/logger';
-import { escapeRegex, stripHtml, truncate } from '@/lib/utils';
+import { stripHtml, truncate } from '@/lib/utils';
 import { globalSearch, type SearchHit } from '@/services/search.service';
 import { getSettings, readBool, readString } from '@/services/settings.service';
 
@@ -81,10 +91,7 @@ export async function getAiConfig(): Promise<AiConfig> {
 /** Reads the (non-public) system prompt straight from the settings collection. */
 export async function getSystemPrompt(): Promise<string> {
     try {
-        await connectToDatabase();
-        const { SiteSetting } = await import('@/db/models/site.model');
-        const row = await SiteSetting.findOne({ key: 'ai.systemPrompt' }).lean().exec();
-        const value = (row as { value?: unknown } | null)?.value;
+        const value = await findSettingValue('ai.systemPrompt');
         return typeof value === 'string' && value.trim().length > 0 ? value : FALLBACK_SYSTEM_PROMPT;
     } catch {
         return FALLBACK_SYSTEM_PROMPT;
@@ -174,13 +181,7 @@ export function extractKeywords(question: string, limit = 6): string[] {
 async function retrieveFaqs(keywords: string[], limit = 3): Promise<RetrievedPassage[]> {
     if (keywords.length === 0) return [];
     try {
-        await connectToDatabase();
-        const rx = new RegExp(keywords.map(escapeRegex).join('|'), 'i');
-        const rows = await FAQ.find({ status: 'active', $or: [{ question: rx }, { answerHtml: rx }] })
-            .select({ question: 1, answerHtml: 1, scope: 1 })
-            .limit(limit)
-            .lean<{ question: string; answerHtml: string }[]>()
-            .exec();
+        const rows = await searchFaqPassages(keywords, limit);
 
         return rows.map((row) => ({
             label: `FAQ — ${row.question}`,
@@ -195,19 +196,7 @@ async function retrieveFaqs(keywords: string[], limit = 3): Promise<RetrievedPas
 async function retrieveArticles(keywords: string[], limit = 3): Promise<RetrievedPassage[]> {
     if (keywords.length === 0) return [];
     try {
-        await connectToDatabase();
-        const { Article } = await import('@/db/models/content.model');
-        const rx = new RegExp(keywords.map(escapeRegex).join('|'), 'i');
-        const rows = await Article.find({
-            status: 'published',
-            isDeleted: false,
-            $or: [{ title: rx }, { excerpt: rx }, { tags: rx }],
-        })
-            .select({ title: 1, slug: 1, excerpt: 1, contentHtml: 1 })
-            .sort({ publishedAt: -1 })
-            .limit(limit)
-            .lean()
-            .exec();
+        const rows = await searchArticlePassages(keywords, limit);
 
         return rows.map((row) => ({
             label: row.title,
@@ -506,34 +495,30 @@ export async function saveConversationTurn(input: {
     if (!input.consentGiven) return;
 
     try {
-        await connectToDatabase();
         const now = new Date();
-        await AiConversation.updateOne(
-            { sessionId: input.sessionId },
+        await appendAiMessages(
+            input.sessionId,
+            [
+                {
+                    role: 'user',
+                    content: truncate(input.question, 4000),
+                    createdAt: now,
+                    flagged: input.flagged ?? false,
+                },
+                {
+                    role: 'assistant',
+                    content: truncate(input.answer, 8000),
+                    sources: input.sources,
+                    createdAt: now,
+                },
+            ],
+            { provider: input.provider, model: input.model },
             {
-                $setOnInsert: {
-                    sessionId: input.sessionId,
-                    user: input.userId,
-                    anonymousId: input.userId ? undefined : input.anonymousId,
-                    consentGiven: true,
-                },
-                $set: { provider: input.provider, model: input.model },
-                $push: {
-                    messages: {
-                        $each: [
-                            { role: 'user', content: truncate(input.question, 4000), createdAt: now, flagged: input.flagged ?? false },
-                            {
-                                role: 'assistant',
-                                content: truncate(input.answer, 8000),
-                                sources: input.sources,
-                                createdAt: now,
-                            },
-                        ],
-                    },
-                },
+                user: input.userId,
+                anonymousId: input.userId ? undefined : input.anonymousId,
+                consentGiven: true,
             },
-            { upsert: true },
-        ).exec();
+        );
     } catch (error) {
         logger.warn('ai.persist_failed', {
             error: error instanceof Error ? error.message : String(error),
@@ -543,11 +528,7 @@ export async function saveConversationTurn(input: {
 
 export async function markHandedOff(sessionId: string, leadId?: string): Promise<void> {
     try {
-        await connectToDatabase();
-        await AiConversation.updateOne(
-            { sessionId },
-            { $set: { handedOffToCounsellor: true, ...(leadId ? { lead: leadId } : {}) } },
-        ).exec();
+        await markAiConversationHandedOff(sessionId, leadId);
     } catch {
         /* non-critical */
     }
@@ -577,22 +558,13 @@ export interface AiConversationSummary {
 }
 
 export async function listRecentConversations(limit = 25): Promise<AiConversationSummary[]> {
-    await connectToDatabase();
-    const rows = await AiConversation.find({})
-        .sort({ updatedAt: -1 })
-        .limit(limit)
-        .lean()
-        .exec();
+    const rows = await listRecentAiConversations(limit);
 
     // Resolve names in one extra query rather than populating each row.
     const userIds = rows.map((row) => row.user).filter(Boolean);
     const nameById = new Map<string, string>();
     if (userIds.length > 0) {
-        const { User } = await import('@/db/models/user.model');
-        const users = await User.find({ _id: { $in: userIds } })
-            .select({ name: 1, email: 1 })
-            .lean()
-            .exec();
+        const users = await listUserNamesByIds(userIds);
         users.forEach((user) => nameById.set(String(user._id), user.name || user.email || 'User'));
     }
 
@@ -629,21 +601,17 @@ export async function getAiStats(): Promise<{
     handedOff: number;
     last7Days: number;
 }> {
-    await connectToDatabase();
     const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);
-    const [conversations, handedOff, last7Days, turnAgg] = await Promise.all([
-        AiConversation.countDocuments({}).exec(),
-        AiConversation.countDocuments({ handedOffToCounsellor: true }).exec(),
-        AiConversation.countDocuments({ createdAt: { $gte: since } }).exec(),
-        AiConversation.aggregate<{ total: number }>([
-            { $project: { count: { $size: { $ifNull: ['$messages', []] } } } },
-            { $group: { _id: null, total: { $sum: '$count' } } },
-        ]).exec(),
+    const [conversations, handedOff, last7Days, turns] = await Promise.all([
+        countAiConversations({}),
+        countAiConversations({ handedOffToCounsellor: true }),
+        countAiConversations({ createdAt: { $gte: since } }),
+        aggregateAiConversationTurns(),
     ]);
 
     return {
         conversations,
-        turns: turnAgg[0]?.total ?? 0,
+        turns,
         handedOff,
         last7Days,
     };

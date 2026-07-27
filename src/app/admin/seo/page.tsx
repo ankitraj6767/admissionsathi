@@ -3,12 +3,7 @@ import Link from 'next/link';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { SectionCard } from '@/components/shared/content-blocks';
 import { Badge } from '@/components/ui/primitives';
-import { connectToDatabase } from '@/db/connect';
-import { College } from '@/db/models/college.model';
-import { Course } from '@/db/models/course.model';
-import { Exam } from '@/db/models/exam.model';
-import { Article } from '@/db/models/content.model';
-import { Redirect } from '@/db/models/site.model';
+import { getSeoInventory } from '@/services/admin/dashboard.service';
 import { requirePermissionPage } from '@/lib/auth/session';
 import { siteConfig } from '@/config/site';
 
@@ -18,19 +13,10 @@ export const metadata: Metadata = { title: 'SEO' };
 
 export default async function AdminSeoPage() {
     await requirePermissionPage('seo.manage');
-    await connectToDatabase();
 
-    const [colleges, courses, exams, articles, redirects, missingCollegeSeo, missingArticleSeo, noIndexed] =
-        await Promise.all([
-            College.countDocuments({ status: 'published' }).exec(),
-            Course.countDocuments({ status: 'published' }).exec(),
-            Exam.countDocuments({ status: 'published' }).exec(),
-            Article.countDocuments({ status: 'published' }).exec(),
-            Redirect.countDocuments({ status: 'active' }).exec(),
-            College.countDocuments({ status: 'published', 'seo.description': { $in: [null, ''] } }).exec(),
-            Article.countDocuments({ status: 'published', 'seo.description': { $in: [null, ''] } }).exec(),
-            College.countDocuments({ 'seo.noIndex': true }).exec(),
-        ]);
+    const { published, redirects, health } = await getSeoInventory();
+    const { colleges, courses, exams, articles } = published;
+    const { missingCollegeSeo, missingArticleSeo, noIndexed } = health;
 
     const sitemaps = [
         { label: 'Sitemap index', href: '/sitemap.xml' },

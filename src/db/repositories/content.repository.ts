@@ -1,5 +1,5 @@
 import 'server-only';
-import type { FilterQuery } from 'mongoose';
+import { Types, type FilterQuery } from 'mongoose';
 import {
     Article,
     FAQ,
@@ -14,10 +14,24 @@ import {
 } from '@/db/models/content.model';
 import { connectToDatabase } from '@/db/connect';
 import { escapeRegex } from '@/lib/utils';
-import { countDocs, findLean, findOneLean, paginate } from './base.repository';
+import {
+    countDocs,
+    findLean,
+    findOneLean,
+    listSlugRows,
+    paginate,
+    type SlugRow,
+} from './base.repository';
 import type { Paginated } from '@/types/common';
 
 const PUBLISHED = { status: 'published' as const };
+
+/** Published, indexable and not soft-deleted — what the sitemap may advertise. */
+const SITEMAP_FILTER = {
+    status: 'published',
+    isDeleted: { $ne: true },
+    'seo.noIndex': { $ne: true },
+} as const;
 
 export const ARTICLE_CARD_PROJECTION = {
     title: 1,
@@ -105,6 +119,43 @@ export async function countPublishedArticles(): Promise<number> {
     return countDocs(Article, PUBLISHED);
 }
 
+/** Best-effort page-view counter. */
+export async function incrementArticleViewCount(id: string): Promise<void> {
+    await connectToDatabase();
+    await Article.updateOne({ _id: id }, { $inc: { viewCount: 1 } }).exec();
+}
+
+/** Indexable article slugs for the sitemap, most recently updated first. */
+export async function listArticleSitemapSlugs(limit: number): Promise<SlugRow[]> {
+    return listSlugRows<ArticleDoc>(Article, SITEMAP_FILTER as FilterQuery<ArticleDoc>, { limit });
+}
+
+/**
+ * Article passages the AI assistant may quote.
+ * Keyword matching only — the assistant is never allowed to answer from anything
+ * that is not published platform content.
+ */
+export async function searchArticlePassages(
+    keywords: string[],
+    limit = 3,
+): Promise<Pick<ArticleDoc, 'title' | 'slug' | 'excerpt' | 'contentHtml'>[]> {
+    if (keywords.length === 0) return [];
+    const rx = new RegExp(keywords.map(escapeRegex).join('|'), 'i');
+    return findLean<ArticleDoc>(
+        Article,
+        {
+            status: 'published',
+            isDeleted: false,
+            $or: [{ title: rx }, { excerpt: rx }, { tags: rx }],
+        },
+        {
+            sort: { publishedAt: -1 },
+            limit,
+            projection: { title: 1, slug: 1, excerpt: 1, contentHtml: 1 },
+        },
+    );
+}
+
 /* ---------------------------------- news --------------------------------- */
 
 export async function listTrendingUpdates(options: {
@@ -163,6 +214,11 @@ export async function getNewsBySlug(slug: string): Promise<NewsPostDoc | null> {
     return findOneLean<NewsPostDoc>(NewsPost, { slug, status: 'published' });
 }
 
+/** Indexable news slugs for the sitemap, most recently updated first. */
+export async function listNewsSitemapSlugs(limit: number): Promise<SlugRow[]> {
+    return listSlugRows<NewsPostDoc>(NewsPost, SITEMAP_FILTER as FilterQuery<NewsPostDoc>, { limit });
+}
+
 /* -------------------------------- resources ------------------------------ */
 
 export async function listResources(filters: {
@@ -206,12 +262,47 @@ export async function listResourcesForExam(
     );
 }
 
+/**
+ * Resource slugs for the sitemap. The `type` comes along because each resource
+ * type is published under its own listing prefix.
+ */
+export async function listResourceSitemapSlugs(
+    limit: number,
+): Promise<(SlugRow & { type?: string })[]> {
+    await connectToDatabase();
+    const rows = (await Resource.find(SITEMAP_FILTER as FilterQuery<ResourceDoc>)
+        .select({ slug: 1, updatedAt: 1, type: 1 })
+        .sort({ updatedAt: -1 })
+        .limit(limit)
+        .lean()
+        .exec()) as (SlugRow & { type?: string })[];
+    return rows.filter((row) => Boolean(row?.slug));
+}
+
 /* ---------------------------------- FAQs --------------------------------- */
 
 export async function listFaqs(scope: string, entityId?: string, limit = 20): Promise<FaqDoc[]> {
     const filter: FilterQuery<FaqDoc> = { scope, status: 'active' };
     if (entityId) filter.entityId = entityId;
     return findLean<FaqDoc>(FAQ, filter, { sort: { displayOrder: 1 }, limit });
+}
+
+/**
+ * FAQ entries matching any of the given keywords, in natural collection order.
+ * Used to ground AI answers in vetted answers we already publish.
+ */
+export async function searchFaqPassages(
+    keywords: string[],
+    limit = 3,
+): Promise<Pick<FaqDoc, 'question' | 'answerHtml'>[]> {
+    if (keywords.length === 0) return [];
+    await connectToDatabase();
+    const rx = new RegExp(keywords.map(escapeRegex).join('|'), 'i');
+    return FAQ.find({ status: 'active', $or: [{ question: rx }, { answerHtml: rx }] })
+        .select({ question: 1, answerHtml: 1, scope: 1 })
+        .limit(limit)
+        .lean<Pick<FaqDoc, 'question' | 'answerHtml'>[]>()
+        .exec();
 }
 
 /* --------------------------------- reviews ------------------------------- */
@@ -329,6 +420,106 @@ export async function aggregateApprovedReviews(): Promise<ApprovedReviewAggregat
     };
 }
 
+/* --------------------------- review moderation --------------------------- */
+
+/** A review with everything the moderation flow needs (no PII projection games). */
+export async function findReviewById(id: string): Promise<ReviewDoc | null> {
+    return findOneLean<ReviewDoc>(Review, { _id: id } as FilterQuery<ReviewDoc>);
+}
+
+/**
+ * Duplicate guard for public submissions: the same email may only review a
+ * college once inside the cooling-off window.
+ */
+export async function findRecentReviewByEmail(
+    collegeId: string,
+    email: string,
+    since: Date,
+): Promise<ReviewDoc | null> {
+    return findOneLean<ReviewDoc>(
+        Review,
+        { college: collegeId, email, createdAt: { $gte: since } } as FilterQuery<ReviewDoc>,
+        { projection: { _id: 1 } },
+    );
+}
+
+export async function createReview(values: Record<string, unknown>): Promise<string> {
+    await connectToDatabase();
+    const created = await Review.create(values);
+    return String(created._id);
+}
+
+/**
+ * Applies moderation fields. Keys passed as `undefined` are unset rather than
+ * ignored, so clearing a moderation note actually clears it.
+ */
+export async function updateReviewModeration(
+    id: string,
+    values: Record<string, unknown>,
+): Promise<void> {
+    await connectToDatabase();
+
+    const set: Record<string, unknown> = {};
+    const unset: Record<string, ''> = {};
+    for (const [key, value] of Object.entries(values)) {
+        if (value === undefined) unset[key] = '';
+        else set[key] = value;
+    }
+
+    await Review.updateOne({ _id: id }, {
+        ...(Object.keys(set).length > 0 ? { $set: set } : {}),
+        ...(Object.keys(unset).length > 0 ? { $unset: unset } : {}),
+    }).exec();
+}
+
+/** Only approved reviews can collect helpful votes. */
+export async function incrementReviewHelpful(id: string): Promise<void> {
+    await connectToDatabase();
+    await Review.updateOne(
+        { _id: id, moderationStatus: 'approved' },
+        { $inc: { helpfulCount: 1 } },
+    ).exec();
+}
+
+export interface CollegeRatingStats {
+    overall: number;
+    placement: number;
+    faculty: number;
+    infrastructure: number;
+    campusLife: number;
+    valueForMoney: number;
+    count: number;
+}
+
+/**
+ * Per-criterion averages over a college's approved reviews.
+ * Returns `null` when the college has no approved reviews, so the caller can
+ * decide what to write instead of guessing from a zeroed row.
+ */
+export async function aggregateCollegeRating(
+    collegeId: string,
+): Promise<CollegeRatingStats | null> {
+    await connectToDatabase();
+
+    const rows = await Review.aggregate<{ _id: null } & CollegeRatingStats>([
+        { $match: { college: new Types.ObjectId(collegeId), moderationStatus: 'approved' } },
+        {
+            $group: {
+                _id: null,
+                overall: { $avg: '$ratings.overall' },
+                placement: { $avg: '$ratings.placement' },
+                faculty: { $avg: '$ratings.faculty' },
+                infrastructure: { $avg: '$ratings.infrastructure' },
+                campusLife: { $avg: '$ratings.campusLife' },
+                valueForMoney: { $avg: '$ratings.valueForMoney' },
+                count: { $sum: 1 },
+            },
+        },
+    ]).exec();
+
+    return rows[0] ?? null;
+}
+
 /** Colleges that actually have approved reviews — used for the hub filter. */
 export async function listReviewedColleges(
     limit = 40,
@@ -343,4 +534,43 @@ export async function listReviewedColleges(
     ]).exec();
 
     return rows.map((row) => ({ slug: row._id, name: row.name, count: row.count }));
+}
+
+/* ------------------------- admin counts & recency ------------------------ */
+
+export async function countArticles(filter: FilterQuery<ArticleDoc> = {}): Promise<number> {
+    return countDocs<ArticleDoc>(Article, filter);
+}
+
+export async function countNews(filter: FilterQuery<NewsPostDoc> = {}): Promise<number> {
+    return countDocs<NewsPostDoc>(NewsPost, filter);
+}
+
+export async function countResources(filter: FilterQuery<ResourceDoc> = {}): Promise<number> {
+    return countDocs<ResourceDoc>(Resource, filter);
+}
+
+export async function countReviews(filter: FilterQuery<ReviewDoc> = {}): Promise<number> {
+    return countDocs<ReviewDoc>(Review, filter);
+}
+
+/** Articles awaiting editorial action — powers the admin sidebar badge. */
+export async function countDraftArticles(): Promise<number> {
+    return countDocs<ArticleDoc>(Article, { status: { $in: ['draft', 'in_review'] } });
+}
+
+export async function countPendingReviews(): Promise<number> {
+    return countDocs<ReviewDoc>(Review, { moderationStatus: 'pending' });
+}
+
+export async function listRecentlyUpdatedArticles(limit = 5): Promise<ArticleDoc[]> {
+    return findLean<ArticleDoc>(
+        Article,
+        {},
+        {
+            sort: { updatedAt: -1 },
+            limit,
+            projection: { title: 1, slug: 1, status: 1, updatedAt: 1 },
+        },
+    );
 }

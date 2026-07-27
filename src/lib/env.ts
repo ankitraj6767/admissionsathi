@@ -58,34 +58,81 @@ const serverSchema = z.object({
 
 export type ServerEnv = z.infer<typeof serverSchema>;
 
+/** Build-time placeholders. Never usable at runtime — see `assertRuntimeEnv`. */
+const BUILD_PLACEHOLDER_URI = 'mongodb://127.0.0.1:27017/admission-sathi';
+const BUILD_PLACEHOLDER_SECRET = 'build-time-placeholder-secret-value';
+
+/**
+ * `.env` files and dashboard-managed secrets routinely contain empty strings for
+ * keys that were declared but never filled (`FOO=""`). Zod treats `''` as a real
+ * value, which defeats every `.default()` and produces confusing enum errors, so
+ * blank values are normalised to "absent" before parsing.
+ */
+function compactEnv(source: NodeJS.ProcessEnv): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const [key, value] of Object.entries(source)) {
+        if (typeof value === 'string' && value.trim() !== '') out[key] = value;
+    }
+    return out;
+}
+
+/**
+ * `next build` compiles and pre-renders modules that transitively import this file.
+ * Failing the whole build because a deploy-time secret is not present locally is
+ * unhelpful, so the build phase degrades to placeholders and the process exits
+ * loudly on the first real request instead (`assertRuntimeEnv`).
+ */
+function isBuildPhase(): boolean {
+    return (
+        process.env.SKIP_ENV_VALIDATION === 'true' ||
+        process.env.NEXT_PHASE === 'phase-production-build'
+    );
+}
+
+let placeholderIssues: string[] = [];
+
 function loadEnv(): ServerEnv {
-    const parsed = serverSchema.safeParse(process.env);
+    const raw = compactEnv(process.env);
+    const parsed = serverSchema.safeParse(raw);
 
-    if (!parsed.success) {
-        const issues = parsed.error.issues
-            .map((i) => `  • ${i.path.join('.')}: ${i.message}`)
-            .join('\n');
+    if (parsed.success) return parsed.data;
 
-        // During `next build` we allow placeholders so CI can compile without live secrets.
-        if (process.env.SKIP_ENV_VALIDATION === 'true') {
-            // eslint-disable-next-line no-console
-            console.warn(`[env] Validation skipped. Missing/invalid values:\n${issues}`);
-            return serverSchema.parse({
-                ...process.env,
-                MONGODB_URI: process.env.MONGODB_URI ?? 'mongodb://127.0.0.1:27017/admission-sathi',
-                AUTH_SECRET: process.env.AUTH_SECRET ?? 'build-time-placeholder-secret-value',
-            });
-        }
+    const issues = parsed.error.issues.map((i) => `  • ${i.path.join('.')}: ${i.message}`);
 
-        throw new Error(
-            `Invalid environment configuration.\n${issues}\n\nCopy .env.example to .env.local and fill in the values.`,
+    if (isBuildPhase()) {
+        placeholderIssues = issues;
+        // eslint-disable-next-line no-console
+        console.warn(
+            `[env] Compiling with placeholder values. Set these before deploying:\n${issues.join('\n')}`,
         );
+        return serverSchema.parse({
+            ...raw,
+            MONGODB_URI: raw.MONGODB_URI ?? BUILD_PLACEHOLDER_URI,
+            AUTH_SECRET: raw.AUTH_SECRET ?? BUILD_PLACEHOLDER_SECRET,
+        });
     }
 
-    return parsed.data;
+    throw new Error(
+        `Invalid environment configuration.\n${issues.join('\n')}\n\nCopy .env.example to .env.local and fill in the values.`,
+    );
 }
 
 export const env: ServerEnv = loadEnv();
+
+/**
+ * Guard for code paths that genuinely need real credentials (database connect,
+ * auth callbacks). Placeholders survive the build but must never serve traffic.
+ */
+export function assertRuntimeEnv(): void {
+    if (placeholderIssues.length === 0) return;
+    throw new Error(
+        `Environment is not configured for runtime use.\n${placeholderIssues.join('\n')}`,
+    );
+}
+
+export function envPlaceholderIssues(): readonly string[] {
+    return placeholderIssues;
+}
 
 export const isProduction = env.NODE_ENV === 'production';
 export const isDevelopment = env.NODE_ENV === 'development';

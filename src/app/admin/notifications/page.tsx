@@ -3,13 +3,10 @@ import Link from 'next/link';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { SectionCard } from '@/components/shared/content-blocks';
 import { Badge, EmptyState } from '@/components/ui/primitives';
-import { connectToDatabase } from '@/db/connect';
-import { Notification } from '@/db/models/system.model';
-import { paginate, toPlain } from '@/db/repositories/base.repository';
+import { getNotificationQueue } from '@/services/notification.service';
 import { requirePermissionPage } from '@/lib/auth/session';
 import { formatRelativeTime } from '@/lib/utils';
 import { Pagination } from '@/components/shared/pagination';
-import type { NotificationDoc } from '@/db/models/system.model';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,23 +19,8 @@ export default async function AdminNotificationsPage({
 }) {
     await requirePermissionPage('notification.manage');
     const params = await searchParams;
-    await connectToDatabase();
 
-    const filter: Record<string, unknown> = {};
-    if (params.state) filter.state = params.state;
-    if (params.channel) filter.channel = params.channel;
-
-    const [result, counts] = await Promise.all([
-        paginate<NotificationDoc>(Notification, {
-            filter,
-            page: Number(params.page) || 1,
-            pageSize: 25,
-            sort: { createdAt: -1 },
-        }).then(toPlain),
-        Notification.aggregate<{ _id: string; count: number }>([
-            { $group: { _id: '$state', count: { $sum: 1 } } },
-        ]).exec(),
-    ]);
+    const { result, counts } = await getNotificationQueue(params);
 
     return (
         <>

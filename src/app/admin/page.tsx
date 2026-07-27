@@ -9,18 +9,15 @@ import { getDashboardOverview, getEventCounts, getTopPages } from '@/services/an
 import { leadCountsBySource, leadTrend, listLeads } from '@/db/repositories/lead.repository';
 import { listUpcomingExamDates } from '@/db/repositories/exam.repository';
 import { toPlain } from '@/db/repositories/base.repository';
-import { connectToDatabase } from '@/db/connect';
-import { College } from '@/db/models/college.model';
-import { Article } from '@/db/models/content.model';
+import { getRecentlyUpdatedContent } from '@/services/admin/dashboard.service';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
 export default async function AdminDashboardPage() {
     const actor = await requireStaffPage();
-    await connectToDatabase();
 
-    const [overview, trend, sources, events, topPages, recentLeads, upcomingDates, recentColleges, recentArticles] =
+    const [overview, trend, sources, events, topPages, recentLeads, upcomingDates, recentContent] =
         await Promise.all([
             getDashboardOverview(),
             leadTrend(14),
@@ -29,8 +26,7 @@ export default async function AdminDashboardPage() {
             getTopPages(30, 8),
             listLeads({ pageSize: 6 }).then((r) => toPlain(r.items)),
             listUpcomingExamDates(6).then(toPlain),
-            College.find().sort({ updatedAt: -1 }).limit(5).select('name slug status updatedAt').lean().exec().then(toPlain),
-            Article.find().sort({ updatedAt: -1 }).limit(5).select('title slug status updatedAt').lean().exec().then(toPlain),
+            getRecentlyUpdatedContent(),
         ]);
 
     const stats = [
@@ -170,30 +166,14 @@ export default async function AdminDashboardPage() {
 
                 <SectionCard title="Recently updated content" icon="Pencil">
                     <ul className="space-y-1.5 text-[12.5px]">
-                        {[...recentColleges.map((c) => ({
-                            id: String(c._id),
-                            label: c.name as string,
-                            href: `/admin/colleges/${String(c._id)}`,
-                            status: c.status as string,
-                            updatedAt: String(c.updatedAt),
-                        })),
-                        ...recentArticles.map((a) => ({
-                            id: String(a._id),
-                            label: a.title as string,
-                            href: `/admin/articles/${String(a._id)}`,
-                            status: a.status as string,
-                            updatedAt: String(a.updatedAt),
-                        }))]
-                            .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-                            .slice(0, 7)
-                            .map((item) => (
-                                <li key={item.id} className="flex items-center justify-between gap-2">
-                                    <Link href={item.href} className="truncate font-semibold text-ink hover:text-navy-700">
-                                        {item.label}
-                                    </Link>
-                                    <span className="shrink-0 text-[10.5px] text-ink-soft">{formatRelativeTime(item.updatedAt)}</span>
-                                </li>
-                            ))}
+                        {recentContent.map((item) => (
+                            <li key={item.id} className="flex items-center justify-between gap-2">
+                                <Link href={item.href} className="truncate font-semibold text-ink hover:text-navy-700">
+                                    {item.label}
+                                </Link>
+                                <span className="shrink-0 text-[10.5px] text-ink-soft">{formatRelativeTime(item.updatedAt)}</span>
+                            </li>
+                        ))}
                     </ul>
                 </SectionCard>
 

@@ -12,8 +12,8 @@ import {
 } from '@/db/repositories/course.repository';
 import { listCollegesOfferingCourse } from '@/db/repositories/college.repository';
 import { listArticlesForEntity } from '@/db/repositories/content.repository';
+import { findExamIdBySlug, listPublishedExamOptions } from '@/db/repositories/exam.repository';
 import { toPlain } from '@/db/repositories/base.repository';
-import { Exam } from '@/db/models/exam.model';
 import { COURSE_LEVELS, STUDY_MODES } from '@/config/constants';
 import { CACHE_TAGS, CACHE_TTL, cached } from '@/lib/cache';
 import type { FilterGroup } from '@/components/shared/filter-panel';
@@ -44,9 +44,7 @@ export async function resolveCourseFilters(
     params: CourseSearchParams,
     overrides: Partial<CourseListFilters> = {},
 ): Promise<CourseListFilters> {
-    const exam = params.exam
-        ? await Exam.findOne({ slug: params.exam }).select('_id').lean().exec()
-        : null;
+    const examId = params.exam ? await findExamIdBySlug(params.exam) : null;
 
     const numeric = (value?: string) => {
         const n = Number(value);
@@ -59,7 +57,7 @@ export async function resolveCourseFilters(
         level: params.level && (COURSE_LEVELS as readonly string[]).includes(params.level) ? params.level : undefined,
         studyMode: params.mode && (STUDY_MODES as readonly string[]).includes(params.mode) ? params.mode : undefined,
         durationMax: numeric(params.duration),
-        examId: exam ? String(exam._id) : undefined,
+        examId: examId ?? undefined,
         feeMax: numeric(params.feeMax),
         sort: params.sort,
         page: Number(params.page) || 1,
@@ -76,7 +74,7 @@ export const buildCourseFilterGroups = cached(
     async (): Promise<FilterGroup[]> => {
         const [categories, exams] = await Promise.all([
             listCourseCategories({ limit: 12 }),
-            Exam.find({ status: 'published' }).select('shortName slug').limit(20).lean().exec(),
+            listPublishedExamOptions({ limit: 20 }),
         ]);
 
         return [

@@ -4,13 +4,16 @@
 
 | Layer | Runner | Config | Location | Status |
 | --- | --- | --- | --- | --- |
-| Unit / component | Vitest 4.1.10 | `vitest.config.ts` | `tests/unit/**` | 7 files, 182 tests, all passing |
-| End-to-end | Playwright 1.62.0 | `playwright.config.ts` | `tests/e2e/**` | 9 spec files, 83 tests × 3 projects = 249. Compile-verified only (`npx playwright test --list`) — never executed against a live server |
+| Unit / component | Vitest 4.1.10 | `vitest.config.ts` | `tests/unit/**` | 17 files, 236 tests, all passing |
+| Integration | Vitest 4.1.10 | `vitest.integration.config.ts` | `tests/integration/**` | 14 files, 274 tests, all passing against a real in-memory MongoDB |
+| End-to-end | Playwright 1.62.0 | `playwright.config.ts` | `tests/e2e/**` | 11 spec files × 3 projects. Compile-verified (`npx playwright test --list`); needs a seeded database to be meaningful |
 | Types | `tsc` | `tsconfig.json` | — | `npx tsc --noEmit` → 0 errors |
 | Lint | ESLint 9.39.1 | `eslint.config.mjs` | — | `npx eslint .` → 0 errors, 55 warnings |
-| Build | `next build` | `next.config.ts` | — | `SKIP_ENV_VALIDATION=true npm run build` → succeeds with no warnings |
+| Build | `next build` | `next.config.ts` | — | `npm run build` → succeeds (compiles with placeholder env when secrets are absent) |
 
-Supporting libraries: `@testing-library/react` 16.3.0, `@testing-library/dom` 10.4.1, `@testing-library/jest-dom` 6.9.1, `jsdom` 26.1.0.
+Unit and integration together: **510 tests**.
+
+Supporting libraries: `@testing-library/react` 16.3.0, `@testing-library/dom` 10.4.1, `@testing-library/jest-dom` 6.9.1, `jsdom` 26.1.0, `mongodb-memory-server` 10.1.4.
 
 The 55 lint warnings are deliberate, not debt in flight: 29 React Compiler advisory rules from `eslint-plugin-react-hooks` v7 (`set-state-in-effect` 13, `purity` 9, `incompatible-library` 4, `refs` 2, `immutability` 1) that `eslint.config.mjs` downgrades from `error` to `warn`, 11 unused `eslint-disable` directives, 12 `@typescript-eslint/no-unused-vars`, 2 `react-hooks/exhaustive-deps` and 1 `@typescript-eslint/no-explicit-any`. Re-run `npx eslint .` rather than trusting this count after a change.
 
@@ -38,8 +41,10 @@ These were checked against a running server with a seeded database. Nothing in t
 
 | Command | Runner | Purpose |
 | --- | --- | --- |
-| `npm test` | Vitest | Everything under `tests/**` except `tests/e2e/**`, single run |
+| `npm test` | Vitest | Unit suite — everything under `tests/**` except `tests/e2e/**` and `tests/integration/**` |
 | `npm run test:unit` | Vitest | `vitest run tests/unit` — the same set, path-scoped |
+| `npm run test:integration` | Vitest | `tests/integration/**` against an ephemeral in-memory MongoDB |
+| `npm run test:all` | Vitest | Unit then integration |
 | `npm run test:watch` | Vitest | Watch mode during development |
 | `npm run test:e2e` | Playwright | Runs `tests/e2e` against `baseURL` |
 | `npm run test:e2e:ui` | Playwright | Interactive UI mode |
@@ -65,8 +70,15 @@ tests/
 │   │   └── predictor-rules.test.ts       # probability band bucketing
 │   └── components/
 │       └── jsdom-environment.test.tsx    # jsdom + Testing Library example
+├── integration/
+│   ├── setup.ts                          # starts an in-memory MongoDB, wipes between tests
+│   ├── authorization.test.ts             # server-side RBAC across five action modules
+│   ├── repositories/                     # base, college, content, geo, lead, system
+│   ├── services/                         # predictor, review, saved, search
+│   └── actions/                          # lead, saved, admin-crud
 └── e2e/
     ├── helpers.ts                        # shared assertions and breakpoints
+    ├── admin-helpers.ts                  # sign-in + admin form helpers
     ├── home.spec.ts
     ├── search.spec.ts
     ├── colleges.spec.ts
@@ -74,9 +86,44 @@ tests/
     ├── predictor.spec.ts
     ├── counselling.spec.ts
     ├── auth.spec.ts
+    ├── admin-workflows.spec.ts
+    ├── mobile-drawer.spec.ts
     ├── accessibility.spec.ts
     └── responsive.spec.ts
 ```
+
+## Integration suite
+
+`tests/integration/**` runs the real Mongoose models against an ephemeral MongoDB
+started by `mongodb-memory-server`, so repositories, services and Server Actions
+are exercised with real schema validation, real unique indexes and real query
+semantics. Nothing about the data layer is mocked.
+
+Two things make it work, and both are easy to break:
+
+**1. The server starts in the setup module's body, not in `beforeAll`.**
+`src/lib/env.ts` validates `process.env` the first time it is imported, and a test
+file's static imports are evaluated before any hook runs. `tests/integration/setup.ts`
+therefore uses a top-level `await MongoMemoryServer.create()` and assigns
+`MONGODB_URI` immediately, which is the only point early enough.
+
+**2. `fileParallelism` is off.** Each file owns a `mongod` process; running them in
+parallel would start a dozen at once.
+
+Collections are wiped `afterEach`, so tests are order-independent — verified with
+`--sequence.shuffle`.
+
+Action and authorization tests mock exactly two things: `@/lib/auth/session` (the
+actor) and the request-scoped Next.js primitives `next/headers` and `next/cache`,
+which throw outside a request. `requirePermission` still runs the real `can()` from
+`@/lib/auth/rbac` against permissions derived by the real `resolvePermissions()`,
+so the RBAC matrix is genuinely exercised rather than stubbed.
+
+`tests/integration/authorization.test.ts` is the one to keep honest: for each admin
+action it asserts that an anonymous caller, and a signed-in student, and a staff
+member holding the wrong permission are all refused — **and that the target
+collection is unchanged afterwards**. That last assertion is what proves the guard
+is server-side and not just a hidden button.
 
 ## Vitest configuration
 
@@ -185,6 +232,8 @@ Specs exist for the rows marked ✅. The rest are the intended backlog, kept her
 | 17 | Counselling form renders with name and mobile fields | ✅ `counselling.spec.ts` |
 | 18 | Empty submit surfaces validation errors; invalid mobile rejected; layout holds at 360px | ✅ `counselling.spec.ts` |
 | 19 | Lead reaches `/admin/leads` with the right `source` | — |
+| 19a | The form creates a real `Lead`, is idempotent per token, and flags a repeat number as a duplicate | ✅ `integration/actions/lead.actions.test.ts` |
+| 19b | A filled honeypot returns a fake success and writes nothing | ✅ `integration/actions/lead.actions.test.ts` |
 | 20 | `/contact` submission creates a `ContactSubmission` and queues notifications | — |
 | 21 | `/book-counselling`: counsellor + slot → booking visible in `/dashboard/bookings` | — |
 | 22 | Repeated submits hit the rate limit and show a friendly message, not an error page | — |
@@ -196,7 +245,9 @@ Specs exist for the rows marked ✅. The rest are the intended backlog, kept her
 | 23 | Predictor listing renders | ✅ `predictor.spec.ts` |
 | 24 | Predictor detail exposes the form and the mandatory disclaimer | ✅ `predictor.spec.ts` |
 | 25 | Unknown predictor slug does not crash the app | ✅ `predictor.spec.ts` |
-| 26 | Submitting a score/rank/percentile groups results into probability bands | — |
+| 26 | Submitting a rank groups results into probability bands from the configured rules | ✅ `integration/services/predictor.service.test.ts` |
+| 26a | A prediction reads only *published* cut-off rows, never a staged dataset | ✅ `integration/services/predictor.service.test.ts` |
+| 26b | Each run is persisted as a `PredictionSession` | ✅ `integration/services/predictor.service.test.ts` |
 | 27 | Out-of-range or missing input shows field-level errors | — |
 | 28 | A signed-in student's prediction is listed in `/dashboard/predictions` | — |
 
@@ -227,16 +278,25 @@ Specs exist for the rows marked ✅. The rest are the intended backlog, kept her
 
 | # | Journey | Spec |
 | --- | --- | --- |
-| 42 | Generic CRUD on a resource: create → list → edit → delete/archive → restore | — |
-| 43 | Generated Zod errors render against the right fields | — |
-| 44 | A limited role cannot see or invoke `college.delete`; a forbidden resource redirects to `/403` | — |
+| 42 | Generic CRUD on a resource: create → list → edit → delete | ✅ `integration/actions/admin-crud.actions.test.ts` |
+| 43 | Generated Zod errors render against the right fields | ✅ `integration/actions/admin-crud.actions.test.ts` (field errors + nothing written) |
+| 44 | A role without the permission cannot invoke the action, and nothing is mutated | ✅ `integration/authorization.test.ts` |
 | 45 | Reference picker refuses a model the actor cannot read | — |
 | 46 | `pages` resource rejects a slug in `RESERVED_PAGE_SLUGS` | — |
-| 47 | Homepage builder: edit → save draft → preview → publish → public page updates | — |
+| 47 | Homepage builder: edit → save → persists across a reload | ✅ `e2e/admin-workflows.spec.ts` (12) |
 | 48 | Media upload: valid image succeeds; oversized and disallowed types are rejected | — |
-| 49 | Every mutation appears in `/admin/audit-logs` with before/after values | — |
-| 50 | Roles editor: toggling a permission changes access after re-login | — |
-| 51 | Cut-off dataset import → publish → the predictor uses the new dataset | — |
+| 49 | Every mutation appears in the audit log with before/after values and a hashed IP | ✅ `integration/actions/admin-crud.actions.test.ts` |
+| 50 | Roles editor: only the owner may rewrite a role, and `super_admin` cannot be reduced | ✅ `integration/authorization.test.ts` |
+| 51 | Cut-off dataset import → publish → rollback re-publishes the previous version | ✅ `integration/services/predictor.service.test.ts` |
+| 52 | Admin reaches the college create form and the cut-off import screen | ✅ `e2e/admin-workflows.spec.ts` (8, 9) |
+| 53 | Lead detail exposes status, assignment and follow-up controls | ✅ `e2e/admin-workflows.spec.ts` (10) |
+| 54 | A content manager (not just the super admin) can reach article publishing | ✅ `e2e/admin-workflows.spec.ts` (11) |
+| 55 | The admin console is served `noindex` | ✅ `e2e/admin-workflows.spec.ts` |
+| 56 | Every sidebar entry resolves, and every registered resource is reachable | ✅ `unit/config/admin-nav.test.ts` |
+
+`admin-workflows.spec.ts` needs a signed-in staff session, so every test in it
+skips with an explanatory message when `npm run db:seed` has not been run against
+a reachable MongoDB. A skipped run is not a passing run — check the report.
 
 ### AI assistant
 
@@ -257,7 +317,8 @@ Specs exist for the rows marked ✅. The rest are the intended backlog, kept her
 
 ## Notes for writing these tests
 
-- Service tests should mock the repository layer rather than hitting MongoDB. Nothing in the current suite opens a connection.
+- Put anything that needs a database in `tests/integration/**`, which gives you a real MongoDB. Keep `tests/unit/**` connection-free: it must stay fast and runnable with no services present.
+- When seeding fixtures, respect required schema fields — Mongoose runs with `strict: 'throw'`, so an unknown key throws rather than being dropped. Two fixture quirks are worth knowing: `createdAt` is immutable, so back-dating rows means writing through `Model.collection.updateOne`; and behaviours that depend on a unique or sparse index need `await Model.init()` first.
 - For not-found journeys, assert the HTTP status from the `page.goto()` response, not just the rendered copy. A soft 404 (404 UI under a 200) is exactly the regression a `loading.tsx` above a `notFound()` route reintroduces.
 - Prefer accessible roles/labels or `data-testid` over CSS selectors; the UI is Tailwind utility classes that change often.
 - Rate limiting is per-IP and in-memory by default, so specs that submit forms repeatedly can poison later specs in the same process. Assert the limit deliberately or isolate those specs.

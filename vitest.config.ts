@@ -19,7 +19,15 @@ export default defineConfig({
         environment: 'node',
         setupFiles: ['./tests/setup.ts'],
         include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
-        exclude: ['node_modules/**', '.next/**', 'tests/e2e/**', 'coverage/**'],
+        // Integration tests need a real MongoDB and run from
+        // `vitest.integration.config.ts` via `npm run test:integration`.
+        exclude: [
+            'node_modules/**',
+            '.next/**',
+            'tests/e2e/**',
+            'tests/integration/**',
+            'coverage/**',
+        ],
         clearMocks: true,
         restoreMocks: true,
         coverage: {

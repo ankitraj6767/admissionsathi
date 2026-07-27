@@ -2,9 +2,7 @@ import type { Metadata } from 'next';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { NavigationManager, type NavMenu } from '@/components/admin/navigation-manager';
 import { SectionCard } from '@/components/shared/content-blocks';
-import { connectToDatabase } from '@/db/connect';
-import { NavigationItem, NavigationMenu } from '@/db/models/site.model';
-import { toPlain } from '@/db/repositories/base.repository';
+import { getNavigationBuilderData } from '@/services/navigation.service';
 import { requirePermissionPage } from '@/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
@@ -13,37 +11,8 @@ export const metadata: Metadata = { title: 'Navigation menus' };
 
 export default async function AdminNavigationPage() {
     await requirePermissionPage('navigation.manage');
-    await connectToDatabase();
 
-    const [menus, items] = await Promise.all([
-        NavigationMenu.find().sort({ location: 1, name: 1 }).lean().exec().then(toPlain),
-        NavigationItem.find().sort({ displayOrder: 1 }).limit(600).lean().exec().then(toPlain),
-    ]);
-
-    const payload: NavMenu[] = menus.map((menu) => ({
-        key: menu.key,
-        name: menu.name,
-        location: menu.location,
-        items: items
-            .filter((item) => item.menuKey === menu.key)
-            .map((item) => ({
-                id: String(item._id),
-                parentId: item.parent ? String(item.parent) : null,
-                label: item.label,
-                url: item.url,
-                icon: item.icon,
-                description: item.description,
-                itemType: item.itemType,
-                columnGroup: item.columnGroup,
-                badge: item.badge,
-                hasNewBadge: Boolean(item.hasNewBadge),
-                isFeatured: Boolean(item.isFeatured),
-                openInNewTab: Boolean(item.openInNewTab),
-                visibility: item.visibility,
-                displayOrder: item.displayOrder,
-                status: item.status,
-            })),
-    }));
+    const payload: NavMenu[] = await getNavigationBuilderData();
 
     return (
         <>

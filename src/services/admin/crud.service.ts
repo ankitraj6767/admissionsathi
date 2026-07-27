@@ -1,9 +1,20 @@
 import 'server-only';
 import mongoose, { Types, type FilterQuery, type Model } from 'mongoose';
 import { z } from 'zod';
-import { connectToDatabase } from '@/db/connect';
 import '@/db/models';
-import { paginate, toPlain } from '@/db/repositories/base.repository';
+import {
+    aggregateAdminStatusCounts,
+    bulkSetAdminDocValues,
+    createAdminDoc,
+    deleteAdminDoc,
+    findAdminDocById,
+    findAdminFieldValue,
+    listAdminReferenceOptions,
+    paginateAdminDocs,
+    pushAdminSlugHistory,
+    setAdminDocValues,
+} from '@/db/repositories/admin.repository';
+import { toPlain } from '@/db/repositories/base.repository';
 import { escapeRegex, slugify } from '@/lib/utils';
 import { ConflictError, NotFoundError } from '@/lib/action-helpers';
 import type { AdminField, AdminResource } from '@/config/admin-resources';
@@ -127,7 +138,6 @@ export async function listResourceDocs(
     resource: AdminResource,
     query: AdminListQuery,
 ): Promise<Paginated<Record<string, unknown>>> {
-    await connectToDatabase();
     const model = modelFor(resource);
 
     const filter: FilterQuery<Record<string, unknown>> = {};
@@ -142,7 +152,7 @@ export async function listResourceDocs(
         ? { [query.sort]: query.order === 'asc' ? 1 : -1 }
         : resource.defaultSort;
 
-    const result = await paginate(model, {
+    const result = await paginateAdminDocs(model, {
         filter,
         page: query.page,
         pageSize: query.pageSize ?? 20,
@@ -156,10 +166,9 @@ export async function getResourceDoc(
     resource: AdminResource,
     id: string,
 ): Promise<Record<string, unknown> | null> {
-    await connectToDatabase();
     if (!Types.ObjectId.isValid(id)) return null;
     const model = modelFor(resource);
-    const doc = await model.findById(id).lean().exec();
+    const doc = await findAdminDocById(model, id);
     return doc ? (toPlain(doc) as Record<string, unknown>) : null;
 }
 
@@ -169,22 +178,9 @@ export async function getReferenceOptions(
     labelField: string,
     search?: string,
 ): Promise<{ label: string; value: string }[]> {
-    await connectToDatabase();
-    const model = mongoose.models[refModel];
-    if (!model) return [];
+    const rows = await listAdminReferenceOptions(refModel, labelField, search);
 
-    const filter: Record<string, unknown> = {};
-    if (search) filter[labelField] = new RegExp(escapeRegex(search), 'i');
-
-    const rows = await model
-        .find(filter)
-        .select(`${labelField} _id`)
-        .sort({ [labelField]: 1 })
-        .limit(200)
-        .lean()
-        .exec();
-
-    return (rows as unknown as Record<string, unknown>[]).map((row) => ({
+    return rows.map((row) => ({
         label: String(row[labelField] ?? row._id),
         value: String(row._id),
     }));
@@ -205,12 +201,8 @@ async function applyDenormalisation(
     ) => {
         const id = payload[refField];
         if (!id || typeof id !== 'string') return;
-        const model = mongoose.models[refModel];
-        if (!model) return;
-        const doc = (await model.findById(id).select(labelField).lean().exec()) as
-            | Record<string, unknown>
-            | null;
-        if (doc?.[labelField]) payload[targetField] = doc[labelField];
+        const value = await findAdminFieldValue(refModel, id, labelField);
+        if (value) payload[targetField] = value;
     };
 
     switch (resource.model) {
@@ -259,7 +251,6 @@ export async function createResourceDoc(
     values: Record<string, unknown>,
     actorId: string,
 ): Promise<{ id: string; label: string }> {
-    await connectToDatabase();
     const model = modelFor(resource);
 
     const payload = toUpdatePayload(resource, values);
@@ -276,8 +267,11 @@ export async function createResourceDoc(
         if (payload.status === 'published' && !payload.publishedAt) payload.publishedAt = new Date();
     }
 
-    const created = await model.create({ ...payload, createdBy: actorId, updatedBy: actorId });
-    const doc = created.toObject() as Record<string, unknown>;
+    const doc = await createAdminDoc(model, {
+        ...payload,
+        createdBy: actorId,
+        updatedBy: actorId,
+    });
 
     return { id: String(doc._id), label: String(doc[resource.titleField] ?? doc._id) };
 }
@@ -288,10 +282,9 @@ export async function updateResourceDoc(
     values: Record<string, unknown>,
     actorId: string,
 ): Promise<{ id: string; label: string; previous: Record<string, unknown> }> {
-    await connectToDatabase();
     const model = modelFor(resource);
 
-    const existing = (await model.findById(id).lean().exec()) as Record<string, unknown> | null;
+    const existing = await findAdminDocById(model, id);
     if (!existing) throw new NotFoundError(`${resource.labelSingular} not found.`);
 
     const payload = toUpdatePayload(resource, values);
@@ -304,17 +297,12 @@ export async function updateResourceDoc(
         payload[resource.slugField] !== existing[resource.slugField] &&
         Array.isArray(existing.slugHistory)
     ) {
-        await model
-            .updateOne(
-                { _id: id },
-                { $push: { slugHistory: { slug: existing[resource.slugField], changedAt: new Date() } } },
-            )
-            .exec();
+        await pushAdminSlugHistory(model, id, existing[resource.slugField]);
     }
 
     if (payload.status === 'published' && !existing.publishedAt) payload.publishedAt = new Date();
 
-    await model.updateOne({ _id: id }, { $set: { ...payload, updatedBy: actorId } }).exec();
+    await setAdminDocValues(model, id, { ...payload, updatedBy: actorId });
 
     const label = String(payload[resource.titleField] ?? existing[resource.titleField] ?? id);
     return { id, label, previous: existing };
@@ -325,25 +313,24 @@ export async function deleteResourceDoc(
     id: string,
     actorId: string,
 ): Promise<{ id: string; label: string; softDeleted: boolean }> {
-    await connectToDatabase();
     const model = modelFor(resource);
 
-    const existing = (await model.findById(id).lean().exec()) as Record<string, unknown> | null;
+    const existing = await findAdminDocById(model, id);
     if (!existing) throw new NotFoundError(`${resource.labelSingular} not found.`);
 
     const label = String(existing[resource.titleField] ?? id);
 
     if (resource.softDelete) {
-        await model
-            .updateOne(
-                { _id: id },
-                { $set: { isDeleted: true, deletedAt: new Date(), deletedBy: actorId, status: 'archived' } },
-            )
-            .exec();
+        await setAdminDocValues(model, id, {
+            isDeleted: true,
+            deletedAt: new Date(),
+            deletedBy: actorId,
+            status: 'archived',
+        });
         return { id, label, softDeleted: true };
     }
 
-    await model.deleteOne({ _id: id }).exec();
+    await deleteAdminDoc(model, id);
     return { id, label, softDeleted: false };
 }
 
@@ -351,11 +338,8 @@ export async function restoreResourceDoc(
     resource: AdminResource,
     id: string,
 ): Promise<{ id: string }> {
-    await connectToDatabase();
     const model = modelFor(resource);
-    await model
-        .updateOne({ _id: id }, { $set: { isDeleted: false, deletedAt: null, deletedBy: null } })
-        .exec();
+    await setAdminDocValues(model, id, { isDeleted: false, deletedAt: null, deletedBy: null });
     return { id };
 }
 
@@ -365,19 +349,12 @@ export async function bulkUpdateStatus(
     status: string,
     actorId: string,
 ): Promise<number> {
-    await connectToDatabase();
     const model = modelFor(resource);
-    const result = await model
-        .updateMany({ _id: { $in: ids } }, { $set: { status, updatedBy: actorId } })
-        .exec();
-    return result.modifiedCount;
+    return bulkSetAdminDocValues(model, ids, { status, updatedBy: actorId });
 }
 
 export async function countByStatus(resource: AdminResource): Promise<Record<string, number>> {
-    await connectToDatabase();
     const model = modelFor(resource);
-    const rows = await model
-        .aggregate<{ _id: string; count: number }>([{ $group: { _id: '$status', count: { $sum: 1 } } }])
-        .exec();
+    const rows = await aggregateAdminStatusCounts(model);
     return Object.fromEntries(rows.filter((r) => r._id).map((r) => [r._id, r.count]));
 }

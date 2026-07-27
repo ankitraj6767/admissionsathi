@@ -70,26 +70,17 @@ export async function subscribeNewsletterAction(
             return fail('Too many attempts. Please try again later.', 'RATE_LIMITED');
         }
 
-        const { connectToDatabase } = await import('@/db/connect');
-        const { Lead } = await import('@/db/models/lead.model');
-        const { generateLeadReference, normalizePhone } = await import(
-            '@/db/repositories/lead.repository'
-        );
+        const { createLead, findNewsletterSubscription, generateLeadReference, normalizePhone } =
+            await import('@/db/repositories/lead.repository');
 
-        await connectToDatabase();
-
-        const existing = await Lead.findOne({ email: data.email, source: 'newsletter' })
-            .select('_id')
-            .lean()
-            .exec();
-
+        // Subscribing twice is not an error — report success without a second row.
+        const existing = await findNewsletterSubscription(data.email);
         if (existing) {
             return succeed({ email: data.email }, 'You are already subscribed.');
         }
 
-        const reference = await generateLeadReference();
-        await Lead.create({
-            reference,
+        await createLead({
+            reference: await generateLeadReference(),
             name: data.name || data.email.split('@')[0],
             phone: '0000000000',
             phoneNormalized: normalizePhone('0000000000'),

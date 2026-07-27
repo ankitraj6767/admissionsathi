@@ -1,7 +1,12 @@
 import 'server-only';
 import { cache } from 'react';
-import { getPublicSettings } from '@/db/repositories/settings.repository';
+import {
+    getPublicSettings,
+    listEditableSettings,
+    upsertSetting,
+} from '@/db/repositories/settings.repository';
 import { SETTING_DEFAULTS } from '@/config/settings-schema';
+import { readSubmittedSettingValue } from '@/lib/settings-payload';
 import { CACHE_TAGS, CACHE_TTL, cached } from '@/lib/cache';
 import { logger } from '@/lib/logger';
 
@@ -54,4 +59,60 @@ export function readNumber(settings: PublicSettings, key: string, fallback = 0):
 export function readString(settings: PublicSettings, key: string, fallback = ''): string {
     const value = settings[key];
     return typeof value === 'string' && value.length > 0 ? value : fallback;
+}
+
+/* -------------------------------- admin write ----------------------------- */
+
+export type SaveSettingsResult =
+    | {
+        ok: true;
+        updated: number;
+        previous: Record<string, unknown>;
+        next: Record<string, unknown>;
+    }
+    | { ok: false; code: 'INVALID_JSON'; key: string; label: string };
+
+/**
+ * Persists a batch of settings.
+ *
+ * Iterates the stored, non-secret definitions instead of the submitted keys, so
+ * an unknown or secret key in the payload is ignored, and coerces each value to
+ * its declared `valueType`. Returns the before/after maps for the audit record.
+ */
+export async function saveSettings(
+    values: Record<string, unknown>,
+    actorId?: string,
+): Promise<SaveSettingsResult> {
+    const definitions = await listEditableSettings();
+
+    let updated = 0;
+    const previous: Record<string, unknown> = {};
+    const next: Record<string, unknown> = {};
+
+    for (const definition of definitions) {
+        const submitted = readSubmittedSettingValue(values, definition.key);
+        if (!submitted.found) continue;
+
+        const key = definition.key;
+        const raw = submitted.value;
+
+        let value: unknown = raw;
+        if (definition.valueType === 'boolean') value = raw === true || raw === 'true' || raw === 'on';
+        else if (definition.valueType === 'number') value = Number(raw);
+        else if (definition.valueType === 'json' && typeof raw === 'string') {
+            try {
+                value = JSON.parse(raw) as unknown;
+            } catch {
+                return { ok: false, code: 'INVALID_JSON', key, label: definition.label };
+            }
+        } else value = typeof raw === 'string' ? raw : String(raw ?? '');
+
+        previous[key] = definition.value;
+        next[key] = value;
+
+        await upsertSetting(key, value, actorId);
+        updated += 1;
+    }
+
+    return { ok: true, updated, previous, next };
 }

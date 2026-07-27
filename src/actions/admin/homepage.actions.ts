@@ -1,14 +1,18 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { connectToDatabase } from '@/db/connect';
-import { HomepageSection } from '@/db/models/site.model';
 import {
     parseSectionConfig,
     reorderHomepageSectionsSchema,
     updateHomepageSectionSchema,
 } from '@/schemas/homepage.schema';
-import { HOMEPAGE_DRAFT_MAP } from '@/config/homepage-defaults';
+import {
+    publishSectionDraft,
+    reorderHomepageSections,
+    resetHomepageSection,
+    saveHomepageSection,
+    setHomepageSectionEnabled,
+} from '@/services/homepage.service';
 import { requirePermission } from '@/lib/auth/session';
 import { recordAudit } from '@/services/audit.service';
 import { CACHE_TAGS } from '@/lib/cache';
@@ -36,8 +40,6 @@ export async function updateHomepageSectionAction(
         }
         const data = parsed.data;
 
-        await connectToDatabase();
-
         // Validate the section-specific config against its schema before writing.
         let config: Record<string, unknown> | undefined;
         if (data.config) {
@@ -55,47 +57,26 @@ export async function updateHomepageSectionAction(
             }
         }
 
-        const draft = HOMEPAGE_DRAFT_MAP[data.key];
-        const previous = await HomepageSection.findOne({ key: data.key }).lean().exec();
-
-        const update: Record<string, unknown> = {
-            name: previous?.name ?? draft?.name ?? data.key,
-            updatedBy: actor.id,
-        };
-        if (data.isEnabled !== undefined) update.isEnabled = data.isEnabled;
-        if (data.heading !== undefined) update.heading = data.heading;
-        if (data.subheading !== undefined) update.subheading = data.subheading;
-        if (data.description !== undefined) update.description = data.description;
-        if (data.ctaLabel !== undefined) update.ctaLabel = data.ctaLabel;
-        if (data.ctaUrl !== undefined) update.ctaUrl = data.ctaUrl;
-
-        if (config) {
-            if (data.saveAsDraft) {
-                update.draftConfig = config;
-                update.hasUnpublishedChanges = true;
-            } else {
-                update.config = config;
-                update.draftConfig = undefined;
-                update.hasUnpublishedChanges = false;
-                update.publishedAt = new Date();
-            }
-        }
-
-        await HomepageSection.updateOne(
-            { key: data.key },
-            { $set: update, $setOnInsert: { displayOrder: draft?.displayOrder ?? 99, key: data.key } },
-            { upsert: true },
-        ).exec();
+        const saved = await saveHomepageSection({
+            key: data.key,
+            isEnabled: data.isEnabled,
+            heading: data.heading,
+            subheading: data.subheading,
+            description: data.description,
+            ctaLabel: data.ctaLabel,
+            ctaUrl: data.ctaUrl,
+            config,
+            saveAsDraft: data.saveAsDraft,
+            actorId: actor.id,
+        });
 
         await recordAudit({
             actor,
             action: data.saveAsDraft ? 'homepage.save_draft' : 'homepage.publish',
             entity: 'HomepageSection',
             entityId: data.key,
-            entityLabel: update.name as string,
-            previousValues: previous
-                ? { heading: previous.heading, isEnabled: previous.isEnabled }
-                : undefined,
+            entityLabel: saved.name,
+            previousValues: saved.previous,
             newValues: { heading: data.heading, isEnabled: data.isEnabled },
         });
 
@@ -116,17 +97,7 @@ export async function reorderHomepageSectionsAction(
         const actor = await requirePermission('homepage.manage');
         const data = reorderHomepageSectionsSchema.parse(input);
 
-        await connectToDatabase();
-
-        await Promise.all(
-            data.order.map((key, index) =>
-                HomepageSection.updateOne(
-                    { key },
-                    { $set: { displayOrder: (index + 1) * 10, updatedBy: actor.id }, $setOnInsert: { key } },
-                    { upsert: true },
-                ).exec(),
-            ),
-        );
+        await reorderHomepageSections([...data.order], actor.id);
 
         await recordAudit({
             actor,
@@ -146,17 +117,8 @@ export async function toggleHomepageSectionAction(
 ): Promise<ActionResult<{ key: string }>> {
     return runAction({ action: 'admin.homepage.toggle' }, async () => {
         const actor = await requirePermission('homepage.manage');
-        await connectToDatabase();
 
-        const draft = HOMEPAGE_DRAFT_MAP[key];
-        await HomepageSection.updateOne(
-            { key },
-            {
-                $set: { isEnabled, updatedBy: actor.id },
-                $setOnInsert: { key, name: draft?.name ?? key, displayOrder: draft?.displayOrder ?? 99 },
-            },
-            { upsert: true },
-        ).exec();
+        await setHomepageSectionEnabled(key, isEnabled, actor.id);
 
         await recordAudit({
             actor,
@@ -177,18 +139,12 @@ export async function publishHomepageDraftAction(
 ): Promise<ActionResult<{ key: string }>> {
     return runAction({ action: 'admin.homepage.publish_draft' }, async () => {
         const actor = await requirePermission('homepage.manage');
-        await connectToDatabase();
 
-        const section = await HomepageSection.findOne({ key }).exec();
-        if (!section) throw new NotFoundError('Section not found.');
-        if (!section.draftConfig) return fail('There is no draft to publish for this section.', 'CONFLICT');
-
-        section.config = section.draftConfig;
-        section.draftConfig = undefined;
-        section.hasUnpublishedChanges = false;
-        section.publishedAt = new Date();
-        section.updatedBy = actor.id as never;
-        await section.save();
+        const outcome = await publishSectionDraft(key, actor.id);
+        if (outcome === 'not_found') throw new NotFoundError('Section not found.');
+        if (outcome === 'no_draft') {
+            return fail('There is no draft to publish for this section.', 'CONFLICT');
+        }
 
         await recordAudit({
             actor,
@@ -207,30 +163,9 @@ export async function resetHomepageSectionAction(
 ): Promise<ActionResult<{ key: string }>> {
     return runAction({ action: 'admin.homepage.reset' }, async () => {
         const actor = await requirePermission('homepage.manage');
-        const draft = HOMEPAGE_DRAFT_MAP[key];
-        if (!draft) throw new NotFoundError('Unknown section.');
 
-        await connectToDatabase();
-        await HomepageSection.updateOne(
-            { key },
-            {
-                $set: {
-                    name: draft.name,
-                    isEnabled: draft.isEnabled,
-                    displayOrder: draft.displayOrder,
-                    heading: draft.heading,
-                    subheading: draft.subheading,
-                    description: draft.description,
-                    ctaLabel: draft.ctaLabel,
-                    ctaUrl: draft.ctaUrl,
-                    config: draft.config,
-                    draftConfig: undefined,
-                    hasUnpublishedChanges: false,
-                    updatedBy: actor.id,
-                },
-            },
-            { upsert: true },
-        ).exec();
+        const reset = await resetHomepageSection(key, actor.id);
+        if (!reset) throw new NotFoundError('Unknown section.');
 
         await recordAudit({ actor, action: 'homepage.reset', entity: 'HomepageSection', entityId: key });
 

@@ -1,14 +1,20 @@
 import 'server-only';
 import { cache } from 'react';
-import { connectToDatabase } from '@/db/connect';
-import { CounsellingBooking, type CounsellorDoc } from '@/db/models/counselling.model';
+import type { CounsellorDoc } from '@/db/models/counselling.model';
 import {
+    addCounsellorRating,
     bookedSlotsForDay,
     createBooking,
+    findBookingByIdempotencyKey,
+    findBookingByReference,
+    findBookingOwner,
     generateBookingReference,
+    getBookingById,
     getCounsellorBySlug,
+    listBookingsForUser,
     listCounsellors,
     pickCounsellorForAssignment,
+    setBookingFeedback,
     updateBooking,
 } from '@/db/repositories/counsellor.repository';
 import { toPlain } from '@/db/repositories/base.repository';
@@ -112,11 +118,7 @@ export interface CreateBookingResult {
 export async function createBookingFromForm(
     input: BookingFormInput & { userId?: string },
 ): Promise<CreateBookingResult> {
-    await connectToDatabase();
-
-    const existing = await CounsellingBooking.findOne({ idempotencyKey: input.idempotencyKey })
-        .lean()
-        .exec();
+    const existing = await findBookingByIdempotencyKey(input.idempotencyKey);
     if (existing) {
         return {
             reference: existing.reference,
@@ -245,17 +247,18 @@ export async function rescheduleBooking(
     scheduledAt: Date,
     reason?: string,
 ): Promise<void> {
-    await connectToDatabase();
-    const booking = await CounsellingBooking.findById(bookingId).exec();
+    const booking = await getBookingById(bookingId);
     if (!booking) throw new Error('Booking not found');
 
-    const previous = booking.scheduledAt;
-    booking.rescheduledFrom = previous;
-    booking.scheduledAt = scheduledAt;
-    booking.rescheduleCount += 1;
-    booking.status = 'rescheduled';
-    if (reason) booking.internalNotes = `${booking.internalNotes ?? ''}\nRescheduled: ${reason}`.trim();
-    await booking.save();
+    await updateBooking(bookingId, {
+        rescheduledFrom: booking.scheduledAt,
+        scheduledAt,
+        rescheduleCount: (booking.rescheduleCount ?? 0) + 1,
+        status: 'rescheduled',
+        ...(reason
+            ? { internalNotes: `${booking.internalNotes ?? ''}\nRescheduled: ${reason}`.trim() }
+            : {}),
+    });
 
     await queueNotification({
         event: 'booking.rescheduled',
@@ -267,22 +270,50 @@ export async function rescheduleBooking(
 }
 
 export async function cancelBooking(bookingId: string, reason: string): Promise<void> {
-    await connectToDatabase();
     await updateBooking(bookingId, { status: 'cancelled', cancellationReason: reason });
 }
 
+/**
+ * Owner of a booking, for the authorization check in the Server Actions.
+ * Returns `null` when the booking does not exist.
+ */
+export async function getBookingOwner(
+    bookingId: string,
+): Promise<{ id: string; userId?: string } | null> {
+    return findBookingOwner(bookingId);
+}
+
+/**
+ * Stores session feedback and folds the rating into the counsellor's average.
+ * Returns `false` when the booking no longer exists.
+ */
+export async function submitBookingFeedback(input: {
+    bookingId: string;
+    rating: number;
+    comment?: string;
+}): Promise<boolean> {
+    const booking = await getBookingById(input.bookingId);
+    if (!booking) return false;
+
+    await setBookingFeedback(input.bookingId, {
+        rating: input.rating,
+        comment: input.comment,
+        submittedAt: new Date(),
+    });
+
+    if (booking.counsellor) {
+        await addCounsellorRating(String(booking.counsellor), input.rating);
+    }
+
+    return true;
+}
+
 export async function getBookingsForUser(userId: string) {
-    await connectToDatabase();
-    const rows = await CounsellingBooking.find({ user: userId })
-        .sort({ scheduledAt: -1 })
-        .limit(50)
-        .lean()
-        .exec();
+    const rows = await listBookingsForUser(userId, 50);
     return toPlain(rows);
 }
 
 export async function getBookingByReference(reference: string) {
-    await connectToDatabase();
-    const booking = await CounsellingBooking.findOne({ reference: reference.toUpperCase() }).lean().exec();
+    const booking = await findBookingByReference(reference.toUpperCase());
     return booking ? toPlain(booking) : null;
 }

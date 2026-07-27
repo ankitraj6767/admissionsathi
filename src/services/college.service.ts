@@ -1,7 +1,9 @@
 import 'server-only';
 import { cache } from 'react';
 import {
+    aggregateCollegeOwnershipCounts,
     buildCollegeFilter,
+    countColleges,
     getCollegeBySlug,
     getCollegeBySlugHistory,
     listColleges,
@@ -11,12 +13,10 @@ import {
     type CollegeListFilters,
 } from '@/db/repositories/college.repository';
 import { listCollegeReviews } from '@/db/repositories/content.repository';
-import { listCourseCategories } from '@/db/repositories/course.repository';
+import { findCourseIdBySlug, listCourseCategories } from '@/db/repositories/course.repository';
+import { listPublishedExamOptions } from '@/db/repositories/exam.repository';
 import { getCityBySlug, getStateBySlug, listCities, listStates } from '@/db/repositories/geo.repository';
-import { toPlain, aggregateLean } from '@/db/repositories/base.repository';
-import { College } from '@/db/models/college.model';
-import { Course } from '@/db/models/course.model';
-import { Exam } from '@/db/models/exam.model';
+import { toPlain } from '@/db/repositories/base.repository';
 import {
     ACCREDITATIONS,
     APPROVAL_BODIES,
@@ -63,12 +63,10 @@ export async function resolveCollegeFilters(
     params: CollegeSearchParams,
     overrides: Partial<CollegeListFilters> = {},
 ): Promise<CollegeListFilters> {
-    const [state, city, course] = await Promise.all([
+    const [state, city, courseId] = await Promise.all([
         params.state ? getStateBySlug(params.state) : null,
         params.city ? getCityBySlug(params.city) : null,
-        params.course
-            ? Course.findOne({ slug: params.course }).select('_id').lean().exec()
-            : null,
+        params.course ? findCourseIdBySlug(params.course) : null,
     ]);
 
     const numeric = (value?: string) => {
@@ -80,7 +78,7 @@ export async function resolveCollegeFilters(
         q: params.q?.slice(0, 80),
         stateId: state ? String(state._id) : undefined,
         cityId: city ? String(city._id) : undefined,
-        courseId: course ? String(course._id) : undefined,
+        courseId: courseId ?? undefined,
         ownership: params.ownership?.split(',').filter((v) => (OWNERSHIP_TYPES as readonly string[]).includes(v)),
         approval: params.approval?.split(',').filter((v) => (APPROVAL_BODIES as readonly string[]).includes(v)),
         accreditation: params.accreditation
@@ -114,20 +112,11 @@ export const getCollegeFacets = cached(
         exams: { label: string; value: string }[];
     }> => {
         const [ownershipRows, states, cities, categories, exams] = await Promise.all([
-            aggregateLean<{ _id: string; count: number }>(College as never, [
-                { $match: { status: 'published', isDeleted: { $ne: true } } },
-                { $group: { _id: '$ownership', count: { $sum: 1 } } },
-                { $sort: { count: -1 } },
-            ]),
+            aggregateCollegeOwnershipCounts(),
             listStates({ limit: 40 }),
             listCities({ limit: 40 }),
             listCourseCategories({ limit: 12 }),
-            Exam.find({ status: 'published' })
-                .select('shortName slug')
-                .sort({ displayOrder: 1 })
-                .limit(20)
-                .lean()
-                .exec(),
+            listPublishedExamOptions({ limit: 20, sort: { displayOrder: 1 } }),
         ]);
 
         return {
@@ -244,6 +233,5 @@ export const getCollegeDetail = cache(async (slug: string) => {
 });
 
 export async function countCollegesForFilter(filters: CollegeListFilters): Promise<number> {
-    const filter = buildCollegeFilter(filters);
-    return College.countDocuments(filter).exec();
+    return countColleges(buildCollegeFilter(filters));
 }

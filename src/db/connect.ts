@@ -1,6 +1,6 @@
 import 'server-only';
 import mongoose, { type Mongoose } from 'mongoose';
-import { env, isProduction } from '@/lib/env';
+import { assertRuntimeEnv, env, isProduction } from '@/lib/env';
 
 /**
  * Cached Mongoose connection.
@@ -40,6 +40,9 @@ export async function connectToDatabase(): Promise<Mongoose> {
     if (cache.conn && cache.conn.connection.readyState === 1) {
         return cache.conn;
     }
+
+    // Placeholder credentials are tolerated while compiling, never for real queries.
+    assertRuntimeEnv();
 
     if (!cache.promise) {
         cache.promise = mongoose

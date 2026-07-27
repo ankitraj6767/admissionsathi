@@ -1,16 +1,40 @@
 import 'server-only';
 import { cache } from 'react';
-import { connectToDatabase } from '@/db/connect';
-import { PredictionSession, Predictor, type PredictorDoc } from '@/db/models/predictor.model';
+import type { PredictorDoc } from '@/db/models/predictor.model';
 import {
+    attachLeadToPredictionSession,
+    attachUserToPredictionSession,
+    countPublishedPredictors,
+    createPredictionSession,
+    listCutoffOptionValues,
+    listPredictionSessionsForUser,
+    createPredictorDataset,
+    deleteCutoffsForDataset,
+    deletePredictorDataset,
     findCutoffCandidates,
+    findDatasetById,
+    findExistingCollegeNames,
+    findLatestDatasetVersion,
+    findLatestRolledBackDataset,
+    findPredictionSessionById,
     getActiveDataset,
+    getPredictorById,
     getPredictorBySlug,
     incrementPredictorUsage,
+    insertCutoffRows,
+    listCollegeImportIndex,
+    listPredictorOptions,
     listPredictors,
+    listRecentDatasets,
+    rollBackOtherPublishedDatasets,
+    setCutoffPublishedForDataset,
+    setCutoffPublishedForPredictor,
+    setPredictorActiveDataset,
+    updateDatasetCounts,
+    updateDatasetState,
 } from '@/db/repositories/predictor.repository';
 import { toPlain } from '@/db/repositories/base.repository';
-import { PROBABILITY_BAND_META, type ProbabilityBand } from '@/config/constants';
+import { DEMO_DATA_NOTICE, PROBABILITY_BAND_META, type ProbabilityBand } from '@/config/constants';
 import { CACHE_TAGS, CACHE_TTL, cached } from '@/lib/cache';
 import { logger } from '@/lib/logger';
 import type { PredictorRunInput } from '@/schemas/predictor.schema';
@@ -124,20 +148,14 @@ export const getPredictor = cache(async (slug: string) => {
 /** Options for the branch / state selects, derived from the published dataset. */
 export const getPredictorOptions = cached(
     async (predictorId: string) => {
-        await connectToDatabase();
-        const { Cutoff } = await import('@/db/models/predictor.model');
-        const [branches, states, collegeTypes, rounds] = await Promise.all([
-            Cutoff.distinct('branchName', { predictor: predictorId, isPublished: true }).exec(),
-            Cutoff.distinct('stateName', { predictor: predictorId, isPublished: true }).exec(),
-            Cutoff.distinct('collegeType', { predictor: predictorId, isPublished: true }).exec(),
-            Cutoff.distinct('round', { predictor: predictorId, isPublished: true }).exec(),
-        ]);
+        const { branches, states, collegeTypes, rounds } =
+            await listCutoffOptionValues(predictorId);
 
         return {
-            branches: (branches as string[]).filter(Boolean).sort().slice(0, 200),
-            states: (states as string[]).filter(Boolean).sort(),
-            collegeTypes: (collegeTypes as string[]).filter(Boolean).sort(),
-            rounds: (rounds as number[]).filter(Boolean).sort((a, b) => a - b),
+            branches: branches.filter(Boolean).sort().slice(0, 200),
+            states: states.filter(Boolean).sort(),
+            collegeTypes: collegeTypes.filter(Boolean).sort(),
+            rounds: rounds.filter(Boolean).sort((a, b) => a - b),
         };
     },
     ['predictor-options'],
@@ -227,8 +245,7 @@ export async function runPrediction(input: PredictorRunInput): Promise<Predictio
     );
 
     // Persist the session (used for history, analytics and counsellor follow-up).
-    await connectToDatabase();
-    const session = await PredictionSession.create({
+    const session = await createPredictionSession({
         predictor: predictor._id,
         predictorSlug: predictor.slug,
         anonymousId: input.anonymousId,
@@ -266,27 +283,319 @@ export async function runPrediction(input: PredictorRunInput): Promise<Predictio
 }
 
 export async function getPredictionSession(id: string) {
-    await connectToDatabase();
-    const session = await PredictionSession.findById(id).lean().exec();
+    const session = await findPredictionSessionById(id);
     return session ? toPlain(session) : null;
 }
 
 export async function listUserPredictionSessions(userId: string, limit = 20) {
-    await connectToDatabase();
-    const rows = await PredictionSession.find({ user: userId })
-        .sort({ createdAt: -1 })
-        .limit(limit)
-        .lean()
-        .exec();
+    const rows = await listPredictionSessionsForUser(userId, limit);
     return toPlain(rows);
 }
 
 export async function attachUserToSession(sessionId: string, userId: string): Promise<void> {
-    await connectToDatabase();
-    await PredictionSession.updateOne({ _id: sessionId }, { $set: { user: userId } }).exec();
+    await attachUserToPredictionSession(sessionId, userId);
+}
+
+export interface PredictionSessionSummary {
+    id: string;
+    predictorSlug: string;
+    resultCount: number;
+}
+
+/**
+ * The few session facts the lead-capture flow needs.
+ * Returns `null` when the session has expired so the caller can ask the student
+ * to run the predictor again.
+ */
+export async function getPredictionSessionSummary(
+    sessionId: string,
+): Promise<PredictionSessionSummary | null> {
+    const session = await findPredictionSessionById(sessionId);
+    if (!session) return null;
+    return {
+        id: String(session._id),
+        predictorSlug: session.predictorSlug,
+        resultCount: session.resultCount,
+    };
+}
+
+/** Marks a session as converted and links the lead it produced. */
+export async function linkLeadToPredictionSession(
+    sessionId: string,
+    leadId: string,
+): Promise<void> {
+    await attachLeadToPredictionSession(sessionId, leadId);
 }
 
 export async function countPredictorsPublished(): Promise<number> {
-    await connectToDatabase();
-    return Predictor.countDocuments({ status: 'published' }).exec();
+    return countPublishedPredictors();
+}
+
+/* -------------------------- cut-off dataset admin ------------------------- */
+
+export interface CutoffRowIssue {
+    row: number;
+    message: string;
+}
+
+/**
+ * Names from an upload that will not link to a College row.
+ * Bounded on both sides: at most 500 names are checked and 25 reported, because
+ * this only drives a warning list in the import preview.
+ */
+export async function findUnmatchedCollegeNames(names: string[]): Promise<string[]> {
+    const bounded = names.slice(0, 500);
+    const matched = new Set(await findExistingCollegeNames(bounded));
+    return bounded.filter((name) => !matched.has(name)).slice(0, 25);
+}
+
+/** Parses a CSV cell into a number, tolerating thousands separators. */
+function numeric(value?: string): number | undefined {
+    if (value === undefined || value === null || value === '') return undefined;
+    const parsed = Number(String(value).replace(/,/g, '').trim());
+    return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+export interface ImportCutoffDatasetInput {
+    predictorId: string;
+    name: string;
+    year: number;
+    sourceNote?: string;
+    columnMapping: Record<string, string>;
+    rows: Record<string, string>[];
+    actorId: string;
+}
+
+export interface ImportCutoffDatasetResult {
+    datasetId: string;
+    version: number;
+    predictorName: string;
+    inserted: number;
+    skipped: number;
+}
+
+/**
+ * Creates the next dataset version and inserts its rows, unpublished.
+ *
+ * A new version is always created rather than mutating the live one, so the
+ * current predictions keep running until an admin publishes the import. Rows that
+ * miss a required value or every closing metric are skipped and reported on the
+ * dataset instead of failing the whole file.
+ */
+export async function importCutoffDataset(
+    input: ImportCutoffDatasetInput,
+): Promise<ImportCutoffDatasetResult | null> {
+    const predictor = await getPredictorById(input.predictorId);
+    if (!predictor) return null;
+
+    const latestVersion = await findLatestDatasetVersion(String(predictor._id));
+
+    const dataset = await createPredictorDataset({
+        predictor: predictor._id,
+        name: input.name,
+        version: latestVersion + 1,
+        year: input.year,
+        sourceNote: input.sourceNote ?? DEMO_DATA_NOTICE,
+        columnMapping: input.columnMapping,
+        state: 'validated',
+        createdBy: input.actorId,
+    });
+
+    const collegeDocs = await listCollegeImportIndex();
+    const collegeByName = new Map(collegeDocs.map((row) => [row.name.toLowerCase(), row]));
+
+    const rows: Record<string, unknown>[] = [];
+    const errors: CutoffRowIssue[] = [];
+
+    input.rows.forEach((row, index) => {
+        const get = (key: string) =>
+            input.columnMapping[key] ? row[input.columnMapping[key]!] : undefined;
+        const collegeName = get('collegeName')?.trim();
+        const branchName = get('branchName')?.trim();
+        const category = get('category')?.trim();
+
+        if (!collegeName || !branchName || !category) {
+            errors.push({ row: index + 2, message: 'Missing required value' });
+            return;
+        }
+
+        const closingRank = numeric(get('closingRank'));
+        const closingPercentile = numeric(get('closingPercentile'));
+        const closingScore = numeric(get('closingScore'));
+        if (closingRank === undefined && closingPercentile === undefined && closingScore === undefined) {
+            errors.push({ row: index + 2, message: 'No closing metric' });
+            return;
+        }
+
+        const college = collegeByName.get(collegeName.toLowerCase());
+
+        rows.push({
+            dataset: dataset._id,
+            predictor: predictor._id,
+            exam: predictor.exam,
+            examShortName: predictor.examShortName,
+            year: input.year,
+            round: numeric(get('round')) ?? 1,
+            college: college?._id,
+            collegeName,
+            collegeSlug: college?.slug,
+            stateName: get('stateName')?.trim() || college?.stateName,
+            cityName: get('cityName')?.trim() || college?.cityName,
+            collegeType: get('collegeType')?.trim() || college?.ownership,
+            branchName,
+            courseName: get('courseName')?.trim(),
+            category,
+            quota: get('quota')?.trim() || 'All India',
+            gender: get('gender')?.trim(),
+            openingRank: numeric(get('openingRank')),
+            closingRank,
+            closingPercentile,
+            closingScore,
+            seats: numeric(get('seats')),
+            annualFee: numeric(get('annualFee')) ?? college?.feeRange?.min,
+            nirfRank: numeric(get('nirfRank')) ?? college?.ranking?.nirfOverall,
+            isPublished: false,
+        });
+    });
+
+    await insertCutoffRows(rows);
+
+    await updateDatasetCounts(String(dataset._id), {
+        rowCount: input.rows.length,
+        validRowCount: rows.length,
+        invalidRowCount: errors.length,
+        validationErrors: errors.slice(0, 200),
+    });
+
+    return {
+        datasetId: String(dataset._id),
+        version: dataset.version,
+        predictorName: predictor.name,
+        inserted: rows.length,
+        skipped: errors.length,
+    };
+}
+
+export interface DatasetStateResult {
+    datasetId: string;
+    name: string;
+    version: number;
+}
+
+/**
+ * Publishes, rolls back or archives a dataset version.
+ *
+ * Publishing unpublishes every other row for the predictor first so a partially
+ * published state is never visible, and rolling back re-publishes the previous
+ * version when there is one. Returns `null` when the dataset does not exist.
+ */
+export async function applyDatasetState(
+    datasetId: string,
+    action: 'publish' | 'rollback' | 'archive',
+    actorId: string,
+): Promise<DatasetStateResult | null> {
+    const dataset = await findDatasetById(datasetId);
+    if (!dataset) return null;
+
+    const id = String(dataset._id);
+    const predictorId = String(dataset.predictor);
+
+    if (action === 'publish') {
+        // Only one published dataset per predictor.
+        await rollBackOtherPublishedDatasets(predictorId, id);
+        await setCutoffPublishedForPredictor(predictorId, false);
+        await setCutoffPublishedForDataset(id, true);
+
+        await updateDatasetState(id, {
+            state: 'published',
+            publishedAt: new Date(),
+            publishedBy: actorId,
+        });
+
+        await setPredictorActiveDataset(predictorId, id);
+    } else if (action === 'rollback') {
+        await setCutoffPublishedForDataset(id, false);
+        await updateDatasetState(id, { state: 'rolled_back' });
+
+        // Re-publish the previous published version, if any.
+        const previous = await findLatestRolledBackDataset(predictorId, id);
+        if (previous) {
+            const previousId = String(previous._id);
+            await updateDatasetState(previousId, { state: 'published' });
+            await setCutoffPublishedForDataset(previousId, true);
+            await setPredictorActiveDataset(predictorId, previousId);
+        }
+    } else {
+        await updateDatasetState(id, { state: 'archived' });
+        await setCutoffPublishedForDataset(id, false);
+    }
+
+    return { datasetId: id, name: dataset.name, version: dataset.version };
+}
+
+export type RemoveDatasetResult =
+    | { ok: true; datasetId: string; name: string; version: number }
+    | { ok: false; code: 'NOT_FOUND' | 'PUBLISHED' };
+
+/** Deletes a dataset and its cut-off rows. A published version must be rolled back first. */
+export async function removeDataset(datasetId: string): Promise<RemoveDatasetResult> {
+    const dataset = await findDatasetById(datasetId);
+    if (!dataset) return { ok: false, code: 'NOT_FOUND' };
+    if (dataset.state === 'published') return { ok: false, code: 'PUBLISHED' };
+
+    const id = String(dataset._id);
+    await deleteCutoffsForDataset(id);
+    await deletePredictorDataset(id);
+
+    return { ok: true, datasetId: id, name: dataset.name, version: dataset.version };
+}
+
+export interface DatasetSummaryRow {
+    id: string;
+    predictorName: string;
+    name: string;
+    version: number;
+    year: number;
+    state: string;
+    rowCount: number;
+    validRowCount: number;
+    invalidRowCount: number;
+    publishedAt?: string;
+    createdAt: string;
+}
+
+export interface CutoffDatasetScreenData {
+    predictors: { label: string; value: string }[];
+    datasets: DatasetSummaryRow[];
+}
+
+/**
+ * Predictor picker options plus the dataset version history for the import screen.
+ * The predictor name is joined here so the page renders a flat, serialisable row.
+ */
+export async function getCutoffDatasetScreenData(): Promise<CutoffDatasetScreenData> {
+    const [predictors, datasets] = await Promise.all([
+        listPredictorOptions().then(toPlain),
+        listRecentDatasets().then(toPlain),
+    ]);
+
+    return {
+        predictors: predictors.map((predictor) => ({
+            label: predictor.name,
+            value: String(predictor._id),
+        })),
+        datasets: datasets.map((dataset) => ({
+            id: String(dataset._id),
+            predictorName: (dataset.predictor as unknown as { name?: string })?.name ?? '—',
+            name: dataset.name,
+            version: dataset.version,
+            year: dataset.year,
+            state: dataset.state,
+            rowCount: dataset.rowCount,
+            validRowCount: dataset.validRowCount,
+            invalidRowCount: dataset.invalidRowCount,
+            publishedAt: dataset.publishedAt ? String(dataset.publishedAt) : undefined,
+            createdAt: String(dataset.createdAt),
+        })),
+    };
 }

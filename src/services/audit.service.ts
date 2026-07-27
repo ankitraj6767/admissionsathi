@@ -1,9 +1,17 @@
 import 'server-only';
-import { connectToDatabase } from '@/db/connect';
-import { AuditLog } from '@/db/models/system.model';
+import {
+    auditEntityNames,
+    createAuditLog,
+    listAuditLogsForEntity,
+    paginateAuditLogs,
+} from '@/db/repositories/system.repository';
+import { toPlain } from '@/db/repositories/base.repository';
 import { clientFingerprint } from '@/lib/rate-limit';
+import { escapeRegex } from '@/lib/utils';
 import { logger, newRequestId } from '@/lib/logger';
+import type { AuditLogDoc } from '@/db/models/system.model';
 import type { SessionActor } from '@/lib/auth/rbac';
+import type { Paginated } from '@/types/common';
 
 const SENSITIVE_FIELDS = [
     'passwordHash',
@@ -46,10 +54,9 @@ export interface AuditInput {
 export async function recordAudit(input: AuditInput): Promise<void> {
     const requestId = input.requestId ?? newRequestId();
     try {
-        await connectToDatabase();
         const { ipHash, userAgent } = await clientFingerprint();
 
-        await AuditLog.create({
+        await createAuditLog({
             actor: input.actor?.id,
             actorName: input.actor?.name,
             actorRoles: input.actor?.roles ?? [],
@@ -73,4 +80,48 @@ export async function recordAudit(input: AuditInput): Promise<void> {
             error: error instanceof Error ? error.message : String(error),
         });
     }
+}
+
+/* --------------------------------- reading -------------------------------- */
+
+export interface AuditLogQuery {
+    q?: string;
+    entity?: string;
+    outcome?: string;
+    page?: string;
+}
+
+export interface AuditLogScreenData {
+    result: Paginated<AuditLogDoc>;
+    entities: string[];
+}
+
+/** Filtered, paginated audit trail plus the entity list for the filter dropdown. */
+export async function getAuditLogScreenData(
+    query: AuditLogQuery,
+): Promise<AuditLogScreenData> {
+    const filter: Record<string, unknown> = {};
+
+    if (query.q) {
+        const rx = new RegExp(escapeRegex(query.q), 'i');
+        filter.$or = [{ action: rx }, { entityLabel: rx }, { actorName: rx }];
+    }
+    if (query.entity) filter.entity = query.entity;
+    if (query.outcome) filter.outcome = query.outcome;
+
+    const [result, entities] = await Promise.all([
+        paginateAuditLogs({ filter, page: Number(query.page) || 1, pageSize: 30 }),
+        auditEntityNames(),
+    ]);
+
+    return { result: toPlain(result), entities };
+}
+
+/** Change history for a single record, shown on admin edit screens. */
+export async function getEntityAuditTrail(
+    entity: string,
+    entityId: string,
+    limit = 20,
+): Promise<AuditLogDoc[]> {
+    return toPlain(await listAuditLogsForEntity(entity, entityId, limit));
 }

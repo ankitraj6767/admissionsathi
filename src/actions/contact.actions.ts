@@ -1,7 +1,6 @@
 'use server';
 
-import { connectToDatabase } from '@/db/connect';
-import { ContactSubmission } from '@/db/models/lead.model';
+import { createContactSubmission } from '@/db/repositories/contact.repository';
 import { contactFormSchema, contactSubjectLabel } from '@/schemas/contact.schema';
 import { getCurrentActor } from '@/lib/auth/session';
 import { RATE_LIMITS, clientFingerprint, rateLimit } from '@/lib/rate-limit';
@@ -46,8 +45,7 @@ export async function submitContactAction(input: unknown): Promise<ActionResult<
 
         const subjectLabel = contactSubjectLabel(data.subject);
 
-        await connectToDatabase();
-        const submission = await ContactSubmission.create({
+        const id = await createContactSubmission({
             name: data.name,
             email: data.email,
             phone: data.phone || undefined,
@@ -56,7 +54,6 @@ export async function submitContactAction(input: unknown): Promise<ActionResult<
             handled: false,
         });
 
-        const id = String(submission._id);
         const supportPhone = readString(settings, 'contact.phone', '');
 
         // Acknowledgement to the submitter — queued, never blocking the response.

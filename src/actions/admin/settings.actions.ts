@@ -2,13 +2,16 @@
 
 import { revalidatePath, updateTag } from 'next/cache';
 import { z } from 'zod';
-import { connectToDatabase } from '@/db/connect';
-import { NavigationItem, NavigationMenu, SiteSetting } from '@/db/models/site.model';
+import { saveSettings } from '@/services/settings.service';
+import {
+    removeNavigationItem,
+    reorderNavigationItems,
+    saveNavigationItem,
+} from '@/services/navigation.service';
 import { requirePermission } from '@/lib/auth/session';
 import { recordAudit } from '@/services/audit.service';
 import { CACHE_TAGS } from '@/lib/cache';
 import { invalidateTags } from '@/lib/revalidate';
-import { readSubmittedSettingValue } from '@/lib/settings-payload';
 import { NotFoundError, fail, runAction, succeed } from '@/lib/action-helpers';
 import type { ActionResult } from '@/types/common';
 
@@ -24,45 +27,18 @@ export async function updateSettingsAction(input: unknown): Promise<ActionResult
         const actor = await requirePermission('settings.manage');
         const data = settingsUpdateSchema.parse(input);
 
-        await connectToDatabase();
+        // The service reads the bounded canonical definitions instead of trusting
+        // submitted keys. That also lets the server accept payloads from
+        // already-open versions of the old dotted-name form.
+        const result = await saveSettings(data.values, actor.id);
 
-        // Read the bounded canonical definitions instead of trusting submitted
-        // keys. This also lets the server accept payloads from already-open
-        // versions of the old dotted-name form.
-        const definitions = await SiteSetting.find({ isSecret: false }).limit(500).lean().exec();
-
-        let updated = 0;
-        const previous: Record<string, unknown> = {};
-        const next: Record<string, unknown> = {};
-
-        for (const definition of definitions) {
-            const submitted = readSubmittedSettingValue(data.values, definition.key);
-            if (!submitted.found) continue;
-
-            const key = definition.key;
-            const raw = submitted.value;
-
-            let value: unknown = raw;
-            if (definition.valueType === 'boolean') value = raw === true || raw === 'true' || raw === 'on';
-            else if (definition.valueType === 'number') value = Number(raw);
-            else if (definition.valueType === 'json' && typeof raw === 'string') {
-                try {
-                    value = JSON.parse(raw) as unknown;
-                } catch {
-                    return fail(`${definition.label} contains invalid JSON.`, 'VALIDATION', {
-                        [key]: ['Invalid JSON'],
-                    });
-                }
-            } else value = typeof raw === 'string' ? raw : String(raw ?? '');
-
-            previous[key] = definition.value;
-            next[key] = value;
-
-            await SiteSetting.updateOne({ key }, { $set: { value, updatedBy: actor.id } }).exec();
-            updated += 1;
+        if (!result.ok) {
+            return fail(`${result.label} contains invalid JSON.`, 'VALIDATION', {
+                [result.key]: ['Invalid JSON'],
+            });
         }
 
-        if (updated === 0) {
+        if (result.updated === 0) {
             return fail('No editable settings were submitted.', 'VALIDATION');
         }
 
@@ -70,9 +46,9 @@ export async function updateSettingsAction(input: unknown): Promise<ActionResult
             actor,
             action: 'settings.update',
             entity: 'SiteSetting',
-            entityLabel: `${updated} settings`,
-            previousValues: previous,
-            newValues: next,
+            entityLabel: `${result.updated} settings`,
+            previousValues: result.previous,
+            newValues: result.next,
         });
 
         // Admin saves require read-after-write freshness. `revalidateTag(...,
@@ -84,7 +60,7 @@ export async function updateSettingsAction(input: unknown): Promise<ActionResult
         revalidatePath('/manifest.webmanifest');
         revalidatePath('/admin/settings');
 
-        return succeed({ updated }, `${updated} setting(s) saved.`);
+        return succeed({ updated: result.updated }, `${result.updated} setting(s) saved.`);
     });
 }
 
@@ -122,70 +98,37 @@ export async function upsertNavigationItemAction(
         const actor = await requirePermission('navigation.manage');
         const data = navItemSchema.parse(input);
 
-        await connectToDatabase();
-        const menu = await NavigationMenu.findOne({ key: data.menuKey }).lean().exec();
-        if (!menu) throw new NotFoundError(`Menu ${data.menuKey} not found.`);
-
-        const payload = {
-            menu: menu._id,
-            menuKey: data.menuKey,
-            parent: data.parentId || null,
-            label: data.label,
-            url: data.url,
-            icon: data.icon || undefined,
-            description: data.description || undefined,
-            itemType: data.itemType,
-            columnGroup: data.columnGroup || undefined,
-            badge: data.badge || undefined,
-            hasNewBadge: data.hasNewBadge,
-            isFeatured: data.isFeatured,
-            openInNewTab: data.openInNewTab,
-            visibility: data.visibility,
-            displayOrder: data.displayOrder,
-            status: data.status,
-            updatedBy: actor.id,
-        };
-
-        let id = data.id;
-        if (id) {
-            await NavigationItem.updateOne({ _id: id }, { $set: payload }).exec();
-        } else {
-            const created = await NavigationItem.create({ ...payload, createdBy: actor.id });
-            id = String(created._id);
-        }
+        const saved = await saveNavigationItem({ ...data, actorId: actor.id });
+        if (!saved) throw new NotFoundError(`Menu ${data.menuKey} not found.`);
 
         await recordAudit({
             actor,
             action: data.id ? 'navigation.update' : 'navigation.create',
             entity: 'NavigationItem',
-            entityId: id,
+            entityId: saved.id,
             entityLabel: `${data.menuKey}: ${data.label}`,
             newValues: { label: data.label, url: data.url, displayOrder: data.displayOrder },
         });
 
         refreshNavigation();
-        return succeed({ id: id! }, 'Navigation item saved.');
+        return succeed({ id: saved.id }, 'Navigation item saved.');
     });
 }
 
 export async function deleteNavigationItemAction(id: string): Promise<ActionResult<{ id: string }>> {
     return runAction({ action: 'admin.navigation.delete' }, async () => {
         const actor = await requirePermission('navigation.manage');
-        await connectToDatabase();
 
-        const item = await NavigationItem.findById(id).lean().exec();
-        if (!item) throw new NotFoundError('Navigation item not found.');
-
-        // Children would otherwise be orphaned.
-        await NavigationItem.deleteMany({ parent: id }).exec();
-        await NavigationItem.deleteOne({ _id: id }).exec();
+        // Children are removed with the parent so nothing is orphaned.
+        const removed = await removeNavigationItem(id);
+        if (!removed) throw new NotFoundError('Navigation item not found.');
 
         await recordAudit({
             actor,
             action: 'navigation.delete',
             entity: 'NavigationItem',
             entityId: id,
-            entityLabel: `${item.menuKey}: ${item.label}`,
+            entityLabel: `${removed.menuKey}: ${removed.label}`,
         });
 
         refreshNavigation();
@@ -202,17 +145,9 @@ export async function reorderNavigationAction(
             .object({ items: z.array(z.object({ id: z.string(), displayOrder: z.number().int() })).max(500) })
             .parse(input);
 
-        await connectToDatabase();
-        await Promise.all(
-            data.items.map((item) =>
-                NavigationItem.updateOne(
-                    { _id: item.id },
-                    { $set: { displayOrder: item.displayOrder, updatedBy: actor.id } },
-                ).exec(),
-            ),
-        );
+        const updated = await reorderNavigationItems(data.items, actor.id);
 
         refreshNavigation();
-        return succeed({ updated: data.items.length }, 'Order saved.');
+        return succeed({ updated }, 'Order saved.');
     });
 }

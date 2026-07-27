@@ -1,9 +1,7 @@
 import type { Metadata } from 'next';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { MediaLibrary, type MediaRow } from '@/components/admin/media-library';
-import { connectToDatabase } from '@/db/connect';
-import { MediaAsset } from '@/db/models/site.model';
-import { toPlain } from '@/db/repositories/base.repository';
+import { getMediaLibrary } from '@/services/media.service';
 import { requirePermissionPage } from '@/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
@@ -12,13 +10,10 @@ export const metadata: Metadata = { title: 'Media library' };
 
 export default async function AdminMediaPage() {
     await requirePermissionPage('media.read');
-    await connectToDatabase();
 
-    const assets = toPlain(
-        await MediaAsset.find().sort({ createdAt: -1 }).limit(120).lean().exec(),
-    );
+    const { result } = await getMediaLibrary({ pageSize: 120 });
 
-    const rows: MediaRow[] = assets.map((asset) => ({
+    const rows: MediaRow[] = result.items.map((asset) => ({
         id: String(asset._id),
         url: asset.url,
         fileName: asset.fileName,

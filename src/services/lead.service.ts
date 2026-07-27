@@ -1,10 +1,9 @@
 import 'server-only';
 import { Types } from 'mongoose';
-import { connectToDatabase } from '@/db/connect';
-import { Course } from '@/db/models/course.model';
-import { College } from '@/db/models/college.model';
-import { Exam } from '@/db/models/exam.model';
-import { City, State } from '@/db/models/geo.model';
+import { findCollegeNameBySlug } from '@/db/repositories/college.repository';
+import { findCourseBySlugOrId } from '@/db/repositories/course.repository';
+import { findExamNameBySlug } from '@/db/repositories/exam.repository';
+import { findCityNameById, findStateNameById } from '@/db/repositories/geo.repository';
 import {
     addLeadActivity,
     createLead,
@@ -64,8 +63,6 @@ function scoreLead(input: {
 export async function createLeadFromForm(
     input: LeadFormInput & { userId?: string },
 ): Promise<CreateLeadResult> {
-    await connectToDatabase();
-
     // 1. Idempotency — a resubmitted form returns the original lead.
     const existing = await findLeadByIdempotencyKey(input.idempotencyKey);
     if (existing) {
@@ -78,19 +75,15 @@ export async function createLeadFromForm(
 
     // 2. Resolve human-readable denormalised names for the CRM.
     const [state, city, course, college, exam] = await Promise.all([
-        input.stateId ? State.findById(input.stateId).select('name').lean().exec() : null,
-        input.cityId ? City.findById(input.cityId).select('name').lean().exec() : null,
+        input.stateId ? findStateNameById(input.stateId) : null,
+        input.cityId ? findCityNameById(input.cityId) : null,
+        // The course field may carry a slug or an id; an unparsable id casts to a
+        // Mongo error, which is not worth failing the whole submission for.
         input.courseInterest
-            ? Course.findOne({ $or: [{ slug: input.courseInterest }, { _id: input.courseInterest }] })
-                .select('name')
-                .lean()
-                .exec()
-                .catch(() => null)
+            ? findCourseBySlugOrId(input.courseInterest).catch(() => null)
             : null,
-        input.collegeSlug
-            ? College.findOne({ slug: input.collegeSlug }).select('name').lean().exec()
-            : null,
-        input.examSlug ? Exam.findOne({ slug: input.examSlug }).select('name').lean().exec() : null,
+        input.collegeSlug ? findCollegeNameBySlug(input.collegeSlug) : null,
+        input.examSlug ? findExamNameBySlug(input.examSlug) : null,
     ]);
 
     // 3. Duplicate detection (same phone in the last 24h).

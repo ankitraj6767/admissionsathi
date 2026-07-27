@@ -42,8 +42,14 @@ export const leadFormSchema = z.object({
     utm: utmSchema,
     /** Anti-duplicate token generated per form mount. */
     idempotencyKey: z.string().min(8).max(64),
-    /** Honeypot — bots fill this, humans never see it. */
-    website: z.string().max(0).optional().or(z.literal('')),
+    /**
+     * Honeypot — hidden from humans, so any value at all means a bot.
+     *
+     * Deliberately *accepted* by the schema rather than rejected: the Server
+     * Action answers a filled honeypot with a fake success, so a bot never learns
+     * the field is a trap. Rejecting it here would leak that signal back.
+     */
+    website: z.string().max(200).optional().or(z.literal('')),
     /** Milliseconds between form mount and submit; sub-second submits are bots. */
     elapsedMs: z.number().min(0).optional(),
 });

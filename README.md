@@ -92,6 +92,7 @@ Single Next.js 16 App Router application. There is no separate backend service: 
 | Primitives / icons | Radix UI, lucide-react | see `package.json` / 1.26.0 |
 | Media storage | Cloudinary SDK (local FS fallback) | 2.10.0 |
 | Unit tests | Vitest + Testing Library + jsdom | 4.1.10 |
+| Integration tests | Vitest + mongodb-memory-server | 10.1.4 |
 | E2E tests | Playwright | 1.62.0 |
 | Lint | ESLint + `eslint-config-next` | 9.39.1 / 16.2.11 |
 | Scripts runner | tsx | 4.20.6 |
@@ -148,6 +149,8 @@ Open `http://localhost:3000`, sign in at `/login`, and staff users land on `/adm
 | `test` | `vitest run` | Unit + component tests once |
 | `test:watch` | `vitest` | Unit tests in watch mode |
 | `test:unit` | `vitest run tests/unit` | Unit tests, path-scoped |
+| `test:integration` | `vitest run --config vitest.integration.config.ts` | Repository, service, Server Action and authorization tests against an in-memory MongoDB |
+| `test:all` | `npm run test:unit && npm run test:integration` | Both Vitest suites |
 | `test:e2e` | `playwright test` | End-to-end tests |
 | `test:e2e:ui` | `playwright test --ui` | Playwright UI mode |
 | `analyze` | `ANALYZE=true next build` | Build with the `ANALYZE` flag set |
@@ -157,10 +160,11 @@ Verified status of the toolchain:
 | Check | Result |
 | --- | --- |
 | `npx tsc --noEmit` | 0 errors |
-| `SKIP_ENV_VALIDATION=true npm run build` | Succeeds with no warnings |
-| `npx vitest run tests/unit` | 182 tests passing across 7 files |
+| `npm run build` | Succeeds. Compiles with placeholder env when secrets are absent; `connectToDatabase()` refuses placeholder credentials at runtime |
+| `npm run test:unit` | 236 tests passing across 17 files |
+| `npm run test:integration` | 274 tests passing across 14 files, against a real in-memory MongoDB |
 | `npx eslint .` | 0 errors, 55 warnings (React Compiler advisory rules, unused `eslint-disable` directives, unused vars — all set to `warn` on purpose) |
-| `npx playwright test` | Specs are compile-verified only (`--list` enumerates 249 tests); they have never been run against a live server |
+| `npx playwright test` | Specs are compile-verified (`--list`). The admin workflow specs skip unless `npm run db:seed` has been run against a reachable MongoDB |
 
 See [docs/testing.md](docs/testing.md) for the full breakdown. The `analyze` script sets `ANALYZE=true` but no bundle-analyzer plugin is wired into `next.config.ts` yet.
 
@@ -172,6 +176,7 @@ See [docs/testing.md](docs/testing.md) for the full breakdown. The `analyze` scr
 ├── postcss.config.mjs          # Tailwind 4 PostCSS pipeline
 ├── eslint.config.mjs           # ESLint flat config (eslint-config-next v16 subpath exports)
 ├── vitest.config.ts            # Unit tests: node by default, `server-only` aliased to a stub
+├── vitest.integration.config.ts # Integration tests: real models, in-memory MongoDB, serial
 ├── playwright.config.ts        # E2E: desktop 1280 + mobile 360/390 projects
 ├── tsconfig.json               # strict TS, `@/*` → `src/*`, excludes tests/e2e
 ├── vercel.json                 # Vercel framework + notification cron schedule
@@ -180,8 +185,9 @@ See [docs/testing.md](docs/testing.md) for the full breakdown. The `analyze` scr
 ├── tests/
 │   ├── setup.ts                # env stubs + jest-dom matchers
 │   ├── stubs/server-only.ts    # empty module aliased over the `server-only` package
-│   ├── unit/                   # lib, schemas, services, one jsdom component example
-│   └── e2e/                    # helpers.ts + 9 Playwright specs
+│   ├── unit/                   # lib, schemas, services, emails, config, jsdom components
+│   ├── integration/            # repositories, services, actions, authorization (real MongoDB)
+│   └── e2e/                    # helpers + 11 Playwright specs incl. admin workflows
 └── src
     ├── proxy.ts                # Edge auth gate for /admin and /dashboard (Next.js 16 proxy convention)
     ├── actions/                # Server Actions (mutations), one file per domain
@@ -202,14 +208,15 @@ See [docs/testing.md](docs/testing.md) for the full breakdown. The `analyze` scr
     │   ├── connect.ts          # Cached Mongoose connection
     │   ├── load-script-env.ts  # dotenv loader for standalone scripts
     │   ├── models/             # Mongoose schemas + central registry (index.ts)
-    │   ├── repositories/       # Query helpers returning plain objects
+    │   ├── repositories/       # The ONLY place a Mongoose query is written
     │   ├── migrations/         # run-indexes.ts
     │   └── seeds/              # Seed runner, module seeders and demo datasets
+    ├── emails/                 # Branded transactional email shell (table markup, inline styles)
     ├── hooks/                  # Client hooks (comparison, debounce, recent searches, ai chat)
     ├── lib/                    # env, cache, revalidate, logger, rate-limit, auth, storage,
     │                           # analytics, seo, observability, finance, pdf
     ├── schemas/                # Zod schemas shared by forms and actions
-    ├── services/               # Domain logic; the only layer that touches repositories/models
+    ├── services/               # Domain logic; composes repositories, never queries directly
     └── types/                  # Shared types and Auth.js module augmentation
 ```
 

@@ -2,12 +2,9 @@ import type { Metadata } from 'next';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { Pagination } from '@/components/shared/pagination';
 import { Badge, EmptyState } from '@/components/ui/primitives';
-import { connectToDatabase } from '@/db/connect';
-import { AuditLog } from '@/db/models/system.model';
-import { paginate, toPlain } from '@/db/repositories/base.repository';
+import { getAuditLogScreenData } from '@/services/audit.service';
 import { requirePermissionPage } from '@/lib/auth/session';
-import { escapeRegex, formatDate } from '@/lib/utils';
-import type { AuditLogDoc } from '@/db/models/system.model';
+import { formatDate } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,25 +17,8 @@ export default async function AdminAuditLogsPage({
 }) {
     await requirePermissionPage('audit.view');
     const params = await searchParams;
-    await connectToDatabase();
 
-    const filter: Record<string, unknown> = {};
-    if (params.q) {
-        const rx = new RegExp(escapeRegex(params.q), 'i');
-        filter.$or = [{ action: rx }, { entityLabel: rx }, { actorName: rx }];
-    }
-    if (params.entity) filter.entity = params.entity;
-    if (params.outcome) filter.outcome = params.outcome;
-
-    const [result, entities] = await Promise.all([
-        paginate<AuditLogDoc>(AuditLog, {
-            filter,
-            page: Number(params.page) || 1,
-            pageSize: 30,
-            sort: { createdAt: -1 },
-        }).then(toPlain),
-        AuditLog.distinct('entity').exec().then((rows) => (rows as string[]).sort()),
-    ]);
+    const { result, entities } = await getAuditLogScreenData(params);
 
     return (
         <>

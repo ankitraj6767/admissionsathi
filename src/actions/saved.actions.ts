@@ -2,9 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { connectToDatabase } from '@/db/connect';
-import { SavedItem } from '@/db/models/system.model';
-import { College } from '@/db/models/college.model';
+import { removeSavedItem, toggleSavedItem } from '@/services/saved.service';
 import { getCurrentActor } from '@/lib/auth/session';
 import { fail, runAction, succeed } from '@/lib/action-helpers';
 import type { ActionResult } from '@/types/common';
@@ -28,41 +26,13 @@ export async function toggleSavedItemAction(
         }
 
         const data = savedItemSchema.parse(input);
-        await connectToDatabase();
 
-        const existing = await SavedItem.findOne({
-            user: actor.id,
-            entityType: data.entityType,
-            entityId: data.entityId,
-        })
-            .select('_id')
-            .lean()
-            .exec();
-
-        if (existing) {
-            await SavedItem.deleteOne({ _id: existing._id }).exec();
-            if (data.entityType === 'college') {
-                await College.updateOne({ _id: data.entityId }, { $inc: { savedCount: -1 } }).exec();
-            }
-            revalidatePath('/dashboard/saved');
-            return succeed({ saved: false }, 'Removed from your saved items.');
-        }
-
-        await SavedItem.create({
-            user: actor.id,
-            entityType: data.entityType,
-            entityId: data.entityId,
-            entityName: data.entityName,
-            entitySlug: data.entitySlug,
-            note: data.note,
-        });
-
-        if (data.entityType === 'college') {
-            await College.updateOne({ _id: data.entityId }, { $inc: { savedCount: 1 } }).exec();
-        }
+        const { saved } = await toggleSavedItem({ userId: actor.id, ...data });
 
         revalidatePath('/dashboard/saved');
-        return succeed({ saved: true }, 'Saved to your dashboard.');
+        return saved
+            ? succeed({ saved: true }, 'Saved to your dashboard.')
+            : succeed({ saved: false }, 'Removed from your saved items.');
     });
 }
 
@@ -71,8 +41,8 @@ export async function removeSavedItemAction(id: string): Promise<ActionResult<{ 
         const actor = await getCurrentActor();
         if (!actor) return fail('Please sign in to continue.', 'UNAUTHENTICATED');
 
-        await connectToDatabase();
-        await SavedItem.deleteOne({ _id: id, user: actor.id }).exec();
+        // Owner-scoped inside the service so a stolen id cannot delete another user's row.
+        await removeSavedItem(actor.id, id);
         revalidatePath('/dashboard/saved');
         return succeed({ id }, 'Removed.');
     });
