@@ -11,6 +11,7 @@ import {
     baseSchemaOptions,
     contentStatusField,
     faqItemSchema,
+    galleryItemSchema,
     imageSchema,
     optimisticConcurrency,
     registerModel,
@@ -20,6 +21,7 @@ import {
     softDeletePlugin,
     statusField,
     type FaqItem,
+    type GalleryItem,
     type ImageRef,
     type SeoMeta,
 } from './shared/base';
@@ -49,7 +51,7 @@ export interface CollegeDoc {
 
     logo?: ImageRef;
     banner?: ImageRef;
-    gallery: ImageRef[];
+    gallery: GalleryItem[];
     brochureUrl?: string;
     videoUrl?: string;
 
@@ -160,7 +162,9 @@ const collegeSchema = new Schema<CollegeDoc>(
 
         logo: imageSchema,
         banner: imageSchema,
-        gallery: { type: [imageSchema], default: [] },
+        // `galleryItemSchema` is a superset of `imageSchema`, so rows written
+        // before videos were supported keep validating and read back as images.
+        gallery: { type: [galleryItemSchema], default: [] },
         brochureUrl: { type: String, trim: true },
         videoUrl: { type: String, trim: true },
 

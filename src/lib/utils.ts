@@ -48,6 +48,14 @@ function trimZero(n: number): string {
     return Number(n.toFixed(n < 10 ? 1 : 0)).toString();
 }
 
+/** 2048 -> "2 KB", 5_500_000 -> "5.2 MB". Used by the media library and picker. */
+export function formatBytes(bytes?: number | null): string {
+    if (bytes === null || bytes === undefined || Number.isNaN(bytes)) return '—';
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 /** 1000 -> "1000+", 20000 -> "20K+", 100000 -> "1 Lakh+" */
 export function formatCompactCount(value: number, suffix = '+'): string {
     if (value >= 10_000_000) return `${trimZero(value / 10_000_000)} Cr${suffix}`;

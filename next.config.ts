@@ -11,10 +11,16 @@ const csp = [
     "default-src 'self'",
     `script-src 'self' 'unsafe-inline'${isProd ? '' : " 'unsafe-eval'"} https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net`,
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob: https://res.cloudinary.com https://images.unsplash.com https://www.google-analytics.com https://www.googletagmanager.com",
+    // `i.ytimg.com` and `i.vimeocdn.com` serve the poster frames for gallery
+    // videos; without them every video tile renders as a broken image.
+    "img-src 'self' data: blob: https://res.cloudinary.com https://images.unsplash.com https://i.ytimg.com https://i.vimeocdn.com https://www.google-analytics.com https://www.googletagmanager.com",
     "font-src 'self' data:",
     "connect-src 'self' https://www.google-analytics.com https://region1.google-analytics.com https://api.cloudinary.com https://api.openai.com",
-    "frame-src 'self' https://www.google.com https://www.youtube.com",
+    // Gallery videos embed from the privacy-preserving YouTube host and Vimeo's
+    // player. Both are required in addition to youtube.com for legacy embeds.
+    "frame-src 'self' https://www.google.com https://www.youtube.com https://www.youtube-nocookie.com https://player.vimeo.com",
+    // Direct .mp4/.webm gallery items play through a native <video> element.
+    "media-src 'self' blob: https:",
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",

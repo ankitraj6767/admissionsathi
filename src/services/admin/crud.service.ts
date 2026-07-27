@@ -17,6 +17,8 @@ import {
 import { toPlain } from '@/db/repositories/base.repository';
 import { escapeRegex, slugify } from '@/lib/utils';
 import { sanitizeRichText } from '@/lib/html/sanitize';
+import { isSafeUrl } from '@/lib/html/policy';
+import { parseVideoUrl, toEmbedUrl } from '@/lib/media/video';
 import { ConflictError, NotFoundError } from '@/lib/action-helpers';
 import type { AdminField, AdminResource } from '@/config/admin-resources';
 import type { Paginated } from '@/types/common';
@@ -29,6 +31,66 @@ export function modelFor(resource: AdminResource): Model<Record<string, unknown>
 }
 
 /* ----------------------------- validation -------------------------------- */
+
+/**
+ * A stored image reference. `url` is checked against the same scheme allow-list
+ * as rich-text links, so a `javascript:` URL can never reach an `img src`.
+ */
+const imageRefSchema = z.object({
+    url: z.string().min(1).max(1000).refine(isSafeUrl, 'Unsupported image URL'),
+    alt: z.string().max(300).optional().or(z.literal('')),
+    width: z.coerce.number().int().positive().optional(),
+    height: z.coerce.number().int().positive().optional(),
+    mediaId: z
+        .string()
+        .optional()
+        .transform((v) => (v && Types.ObjectId.isValid(v) ? v : undefined)),
+});
+
+/**
+ * One gallery tile. Videos are re-derived from their source URL on the server
+ * rather than trusting the `embedUrl` the browser sent, so a crafted request
+ * cannot put an arbitrary origin into an `iframe src`.
+ */
+const galleryItemInputSchema = z
+    .object({
+        kind: z.enum(['image', 'video']).default('image'),
+        url: z.string().min(1).max(1000),
+        alt: z.string().max(300).optional().or(z.literal('')),
+        caption: z.string().max(300).optional().or(z.literal('')),
+        width: z.coerce.number().int().positive().optional(),
+        height: z.coerce.number().int().positive().optional(),
+        mediaId: z
+            .string()
+            .optional()
+            .transform((v) => (v && Types.ObjectId.isValid(v) ? v : undefined)),
+        displayOrder: z.coerce.number().int().min(0).default(0),
+    })
+    .transform((item, ctx) => {
+        if (item.kind === 'video') {
+            const parsed = parseVideoUrl(item.url);
+            if (!parsed) {
+                ctx.addIssue({
+                    code: 'custom',
+                    message: `"${item.url}" is not a supported video URL`,
+                });
+                return z.NEVER;
+            }
+            return {
+                ...item,
+                videoProvider: parsed.provider,
+                embedUrl: parsed.embedUrl,
+                thumbnailUrl: parsed.thumbnailUrl,
+            };
+        }
+
+        if (!isSafeUrl(item.url)) {
+            ctx.addIssue({ code: 'custom', message: 'Unsupported image URL' });
+            return z.NEVER;
+        }
+
+        return item;
+    });
 
 function fieldSchema(field: AdminField): z.ZodTypeAny {
     switch (field.type) {
@@ -57,6 +119,49 @@ function fieldSchema(field: AdminField): z.ZodTypeAny {
                 .max(40)
                 .optional()
                 .transform((v) => (v && Types.ObjectId.isValid(v) ? v : undefined));
+        case 'image':
+            /**
+             * Matches `ImageRef`. A picked image with no URL is treated as
+             * "cleared" rather than an error, so removing a logo works by
+             * emptying the field.
+             */
+            return z.preprocess(
+                (v) => {
+                    if (!v || typeof v !== 'object') return undefined;
+                    const candidate = v as Record<string, unknown>;
+                    if (typeof candidate.url !== 'string' || candidate.url.trim() === '') {
+                        return undefined;
+                    }
+                    return candidate;
+                },
+                imageRefSchema.optional(),
+            );
+
+        case 'gallery':
+            return z.preprocess(
+                (v) => (Array.isArray(v) ? v : []),
+                z.array(galleryItemInputSchema).max(60, 'A gallery holds at most 60 items'),
+            );
+
+        case 'video':
+            /**
+             * Stored as the provider's embed URL so the public page can drop it
+             * straight into an `iframe` without re-parsing. An unsupported URL is
+             * rejected here rather than silently rendering a broken embed.
+             */
+            return z.preprocess(
+                (v) => (typeof v === 'string' ? v.trim() : v),
+                z
+                    .string()
+                    .max(500)
+                    .optional()
+                    .or(z.literal(''))
+                    .transform((v) => (v ? (toEmbedUrl(v) ?? 'INVALID_VIDEO') : undefined))
+                    .refine((v) => v !== 'INVALID_VIDEO', {
+                        message: 'Use a YouTube or Vimeo link, or a direct video file URL',
+                    }),
+            );
+
         case 'json':
             return z.preprocess((v) => {
                 if (typeof v !== 'string') return v;
@@ -124,6 +229,20 @@ function toUpdatePayload(
         .filter((field) => !field.readOnly)
         .forEach((field) => {
             const raw = values[field.name];
+
+            /**
+             * `image` and `video` validate to `undefined` when cleared, and Zod
+             * drops the key entirely, so "cleared" and "absent" are
+             * indistinguishable here. The generated form always submits every
+             * non-readOnly field, so absent means removed — written as an unset
+             * (see `setAdminDocValues`) rather than skipped, otherwise removing a
+             * logo would report success and reappear on reload.
+             */
+            if ((field.type === 'image' || field.type === 'video') && raw === undefined) {
+                payload[field.name] = undefined;
+                return;
+            }
+
             if (raw === undefined) return;
             if (raw === '' && field.type !== 'boolean') {
                 payload[field.name] = undefined;

@@ -9,6 +9,9 @@ import { createResourceAction, deleteResourceAction, updateResourceAction } from
 import { Button } from '@/components/ui/button';
 import { Checkbox, Field, Input, Select, Textarea } from '@/components/ui/field';
 import { RichTextEditor } from '@/components/admin/rich-text-editor';
+import { ImageField, type ImageValue } from '@/components/admin/image-field';
+import { GalleryField, type GalleryItemValue } from '@/components/admin/gallery-field';
+import { VideoUrlField } from '@/components/admin/video-url-field';
 import { cn, slugify } from '@/lib/utils';
 import type { AdminField, AdminResource } from '@/config/admin-resources';
 
@@ -32,12 +35,18 @@ function readPath(values: Record<string, unknown>, path: string): unknown {
     }, values);
 }
 
-function toInputValue(field: AdminField, value: unknown): string | boolean | string[] {
+function toInputValue(field: AdminField, value: unknown): unknown {
     if (value === undefined || value === null) {
         if (field.type === 'boolean') return false;
         if (field.type === 'multiselect' || field.type === 'tags') return [];
+        if (field.type === 'gallery') return [];
+        // `image` stays undefined rather than '' so a cleared field is
+        // distinguishable from one that was never set.
+        if (field.type === 'image') return undefined;
         return '';
     }
+    // Object and array shapes are handed to their controlled editors untouched.
+    if (field.type === 'image' || field.type === 'gallery') return value;
     if (field.type === 'boolean') return Boolean(value);
     if (field.type === 'multiselect') return (value as string[]).map(String);
     if (field.type === 'tags') return (value as string[]).map(String);
@@ -163,6 +172,54 @@ export function ResourceForm({
                                     aria-describedby={
                                         fieldError ? `${id}-error` : field.help ? `${id}-hint` : undefined
                                     }
+                                />
+                            )}
+                        />
+                    );
+                case 'image':
+                    return (
+                        <Controller
+                            name={field.name}
+                            control={control}
+                            render={({ field: controlled }) => (
+                                <ImageField
+                                    id={id}
+                                    label={field.label}
+                                    aspect={field.imageAspect}
+                                    value={controlled.value as ImageValue | undefined}
+                                    onChange={controlled.onChange}
+                                    invalid={Boolean(fieldError)}
+                                />
+                            )}
+                        />
+                    );
+                case 'gallery':
+                    return (
+                        <Controller
+                            name={field.name}
+                            control={control}
+                            render={({ field: controlled }) => (
+                                <GalleryField
+                                    id={id}
+                                    value={(controlled.value as GalleryItemValue[]) ?? []}
+                                    onChange={controlled.onChange}
+                                    invalid={Boolean(fieldError)}
+                                />
+                            )}
+                        />
+                    );
+                case 'video':
+                    return (
+                        <Controller
+                            name={field.name}
+                            control={control}
+                            render={({ field: controlled }) => (
+                                <VideoUrlField
+                                    id={id}
+                                    value={typeof controlled.value === 'string' ? controlled.value : ''}
+                                    onChange={controlled.onChange}
+                                    onBlur={controlled.onBlur}
+                                    invalid={Boolean(fieldError)}
                                 />
                             )}
                         />

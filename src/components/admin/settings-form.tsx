@@ -8,6 +8,7 @@ import { updateSettingsAction } from '@/actions/admin/settings.actions';
 import { Button } from '@/components/ui/button';
 import { Checkbox, Field, Input, Textarea } from '@/components/ui/field';
 import { RichTextEditor } from '@/components/admin/rich-text-editor';
+import { ImageUrlField } from '@/components/admin/image-url-field';
 import { cn } from '@/lib/utils';
 
 export interface SettingRow {
@@ -161,6 +162,20 @@ export function SettingsForm({ settings }: { settings: SettingRow[] }) {
                                                         onChange={field.onChange}
                                                         onBlur={field.onBlur}
                                                         aria-describedby={`${id}-hint`}
+                                                    />
+                                                )}
+                                            />
+                                        ) : setting.valueType === 'image' ? (
+                                            <Controller
+                                                name={fieldName}
+                                                control={control}
+                                                render={({ field }) => (
+                                                    <ImageUrlField
+                                                        id={id}
+                                                        label={setting.label}
+                                                        value={typeof field.value === 'string' ? field.value : ''}
+                                                        onChange={field.onChange}
+                                                        onBlur={field.onBlur}
                                                     />
                                                 )}
                                             />
