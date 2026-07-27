@@ -3,7 +3,9 @@ import { notFound } from 'next/navigation';
 import { CtaBanner, DataNotice, FaqAccordion, KeyValueGrid, RichText, SectionCard } from '@/components/shared/content-blocks';
 import { CollegeCard, toCollegeCard } from '@/components/colleges/college-card';
 import { Badge, RatingStars } from '@/components/ui/primitives';
+import { SafeLink } from '@/components/shared/safe-link';
 import { getCollegeDetail } from '@/services/college.service';
+import { safeWebUrl } from '@/lib/url';
 import { formatCompactINR, formatDate } from '@/lib/utils';
 
 export default async function CollegeOverviewPage({
@@ -16,6 +18,10 @@ export default async function CollegeOverviewPage({
     if (!detail || 'redirectTo' in detail) notFound();
 
     const { college, courses, reviews, similar, rankings } = detail;
+
+    // Resolved once so the Contact card can decide whether to render the row at
+    // all — an unsafe or empty value must not leave an empty bullet behind.
+    const websiteHref = safeWebUrl(college.contact?.website);
 
     return (
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -254,6 +260,15 @@ export default async function CollegeOverviewPage({
                                 <a href={`mailto:${college.contact.email}`} className="text-ink-soft hover:text-navy-700">
                                     {college.contact.email}
                                 </a>
+                            </li>
+                        ) : null}
+                        {websiteHref ? (
+                            <li className="break-all">
+                                <SafeLink
+                                    href={websiteHref}
+                                    labelFromHost
+                                    className="font-semibold text-navy-600 hover:text-orange"
+                                />
                             </li>
                         ) : null}
                         {college.address ? <li className="text-ink-soft">{college.address}</li> : null}

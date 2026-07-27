@@ -11,7 +11,10 @@ import {
     SectionCard,
 } from '@/components/shared/content-blocks';
 import { Badge } from '@/components/ui/primitives';
+import { SafeLink } from '@/components/shared/safe-link';
+import { ExternalLink } from 'lucide-react';
 import { getLoanProvider } from '@/services/finance.service';
+import { displayHost, safeWebUrl } from '@/lib/url';
 import { formatCompactINR } from '@/lib/utils';
 import { buildMetadata } from '@/lib/seo/metadata';
 import { JsonLd, buildBreadcrumbJsonLd, buildFaqJsonLd } from '@/lib/seo/json-ld';
@@ -46,6 +49,7 @@ export default async function LoanProviderPage({
     if (!detail) notFound();
 
     const { provider, products } = detail;
+    const applyHref = safeWebUrl(provider.applyUrl);
     const faqJson = buildFaqJsonLd(
         (provider.faqs ?? []).map((f) => ({ question: f.question, answer: f.answer })),
     );
@@ -172,6 +176,31 @@ export default async function LoanProviderPage({
                         {provider.faqs?.length ? (
                             <SectionCard title="FAQs" icon="CircleHelp">
                                 <FaqAccordion faqs={provider.faqs.map((f) => ({ question: f.question, answer: f.answer }))} />
+                            </SectionCard>
+                        ) : null}
+
+                        {/*
+                          `applyUrl` is editable in the admin but was never
+                          rendered, so the lender's own application link had
+                          nowhere to appear. Shown alongside the counselling CTA
+                          rather than replacing it.
+                        */}
+                        {applyHref ? (
+                            <SectionCard title={`Apply with ${provider.name}`} icon="ExternalLink">
+                                <p className="text-[12.5px] text-ink-soft">
+                                    You will continue on {displayHost(applyHref)}. Admission Sathi does
+                                    not process loan applications.
+                                </p>
+                                <SafeLink
+                                    href={applyHref}
+                                    showIcon={false}
+                                    className="mt-2.5 h-10 rounded-[10px] bg-navy px-4 text-[13px] font-bold text-white hover:bg-navy-800"
+                                    data-analytics="loan_apply_click"
+                                >
+                                    Go to the application
+                                    <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+                                    <span className="sr-only">(opens in a new tab)</span>
+                                </SafeLink>
                             </SectionCard>
                         ) : null}
 

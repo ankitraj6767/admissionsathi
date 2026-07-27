@@ -131,6 +131,51 @@ Sanitisation applies to writes. Rows created before it existed (seed data, and
 anything authored earlier) were never filtered, so treat a one-time re-save or a
 backfill as outstanding if that history matters.
 
+## The admin ↔ public contract
+
+A field is only finished when an editor can set it *and* a visitor can see it.
+Three failure modes have each produced a "why isn't this saving?" report, and all
+three are silent — the form says "Saved" and nothing changes:
+
+**1. Dotted field names.** `contact.website`, `feeRange.min`, `seo.title` and 30
+others are keyed by a literal dotted string in `admin-resources.ts`, because that
+is what a Mongo `$set` wants. React Hook Form reads `.` as a *path* and writes
+`{ contact: { website } }`, so the dotted key kept its stale default and the edit
+was thrown away. `resource-form.tsx` now flattens RHF state back to dotted keys
+via `toFlatPayload`, driven by the field list rather than by walking the object.
+Anything that reads form state has to go through `readFormValue` — nested first,
+literal key second, mirroring RHF's own `get`.
+
+**2. Cleared values that never unset.** Mongoose strips `undefined` out of `$set`,
+so emptying an optional field was a no-op. `setAdminDocValues` splits the payload
+into `$set`/`$unset`. Field types whose schema maps empty input to `undefined`
+(`image`, `video`, `url`) also have to be listed in `CLEARABLE_TO_UNDEFINED`,
+because Zod drops the key entirely and "cleared" would otherwise be
+indistinguishable from "untouched".
+
+**3. Fields with nowhere to appear.** `contact.website` was stored and emitted in
+JSON-LD but never rendered visibly; `applyUrl` on a lender was editable and
+rendered nowhere at all. When adding an admin field, render it somewhere a visitor
+can reach, or do not add it.
+
+A fourth to watch for: **projection blockers**. A field omitted from
+`COLLEGE_CARD_PROJECTION` (or any repository `select`) arrives as `undefined` even
+though the component asks for it. The card projections currently cover everything
+the cards read.
+
+### Editor-supplied URLs
+
+Every URL an editor types eventually lands in an `href`, which makes it a script
+sink (`javascript:`) and a tabnabbing risk. Two layers:
+
+- **On write**, the `url` field type validates through `safeWebUrl` (`lib/url.ts`),
+  so only `http`/`https` is stored. A bare `example.org` is upgraded to
+  `https://example.org` rather than stored and then never linked.
+- **On render**, `SafeLink` (`components/shared/safe-link.tsx`) re-validates,
+  adds `target="_blank"` with `rel="noopener noreferrer"` for external links, and
+  renders nothing when the value is unsafe. `lib/url.ts` has no `server-only`
+  marker so the admin field previews with exactly the server's rules.
+
 ## Images and video
 
 Every model already carried image fields (`logo`, `banner`, `gallery`,

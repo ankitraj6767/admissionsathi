@@ -35,6 +35,11 @@ export type AdminFieldType =
     | 'reference'
     | 'tags'
     | 'json'
+    /**
+     * An external web address. Validated to http/https on write, so a stored
+     * value can never become a `javascript:` href on a public page.
+     */
+    | 'url'
     /** Single image, stored as `ImageRef` (`{ url, alt, width, height, mediaId }`). */
     | 'image'
     /** Ordered list of images and embedded videos, stored as `GalleryItem[]`. */
@@ -190,8 +195,8 @@ export const ADMIN_RESOURCES: Record<string, AdminResource> = {
             { name: 'eligibilityHtml', label: 'Eligibility', type: 'richtext', group: 'Content', colSpan: 2 },
             { name: 'contact.phone', label: 'Phone', type: 'text', group: 'Contact' },
             { name: 'contact.email', label: 'Email', type: 'text', group: 'Contact' },
-            { name: 'contact.website', label: 'Website', type: 'text', group: 'Contact', colSpan: 2 },
-            { name: 'brochureUrl', label: 'Brochure URL', type: 'text', group: 'Contact', colSpan: 2 },
+            { name: 'contact.website', label: 'Website', type: 'url', group: 'Contact', colSpan: 2 },
+            { name: 'brochureUrl', label: 'Brochure URL', type: 'url', group: 'Contact', colSpan: 2 },
             { name: 'logo', label: 'Logo', type: 'image', imageAspect: 'square', group: 'Media' },
             { name: 'banner', label: 'Hero banner', type: 'image', imageAspect: 'wide', group: 'Media' },
             {
@@ -392,7 +397,7 @@ export const ADMIN_RESOURCES: Record<string, AdminResource> = {
             { name: 'category', label: 'Category', type: 'select', options: EXAM_CATEGORIES, required: true, group: 'Basics' },
             { name: 'mode', label: 'Mode', type: 'multiselect', options: EXAM_MODES, group: 'Basics' },
             { name: 'examYear', label: 'Exam year', type: 'number', required: true, min: 2000, max: 2100, group: 'Basics' },
-            { name: 'officialWebsite', label: 'Official website', type: 'text', group: 'Basics', colSpan: 2 },
+            { name: 'officialWebsite', label: 'Official website', type: 'url', group: 'Basics', colSpan: 2 },
             { name: 'logo', label: 'Exam logo', type: 'image', imageAspect: 'square', group: 'Media' },
             { name: 'applicationFee.general', label: 'Fee — General (₹)', type: 'number', group: 'Fees' },
             { name: 'applicationFee.reserved', label: 'Fee — Reserved (₹)', type: 'number', group: 'Fees' },
@@ -566,7 +571,7 @@ export const ADMIN_RESOURCES: Record<string, AdminResource> = {
             { name: 'processingTimeDays', label: 'Processing time', type: 'text', group: 'Terms' },
             { name: 'coversAbroad', label: 'Covers study abroad', type: 'boolean', group: 'Terms' },
             { name: 'documentsRequired', label: 'Documents required', type: 'tags', group: 'Terms', colSpan: 2 },
-            { name: 'applyUrl', label: 'Apply URL', type: 'text', group: 'Terms', colSpan: 2 },
+            { name: 'applyUrl', label: 'Apply URL', type: 'url', group: 'Terms', colSpan: 2 },
             { name: 'logo', label: 'Lender logo', type: 'image', imageAspect: 'square', group: 'Media' },
             { name: 'isFeatured', label: 'Featured', type: 'boolean', group: 'Publishing' },
             { name: 'displayOrder', label: 'Display order', type: 'number', group: 'Publishing' },
@@ -686,7 +691,7 @@ export const ADMIN_RESOURCES: Record<string, AdminResource> = {
             { name: 'maxFamilyIncome', label: 'Maximum family income (₹)', type: 'number', group: 'Targeting' },
             { name: 'applicationStart', label: 'Application starts', type: 'date', group: 'Dates' },
             { name: 'applicationDeadline', label: 'Deadline', type: 'date', group: 'Dates' },
-            { name: 'applicationUrl', label: 'Application URL', type: 'text', group: 'Dates', colSpan: 2 },
+            { name: 'applicationUrl', label: 'Application URL', type: 'url', group: 'Dates', colSpan: 2 },
             { name: 'logo', label: 'Provider logo', type: 'image', imageAspect: 'square', group: 'Media' },
             { name: 'isFeatured', label: 'Featured', type: 'boolean', group: 'Publishing' },
             statusField,
@@ -738,7 +743,7 @@ export const ADMIN_RESOURCES: Record<string, AdminResource> = {
             { name: 'paidSessionMinutes', label: 'Paid session (minutes)', type: 'number', group: 'Sessions' },
             { name: 'paidSessionFee', label: 'Paid session fee (₹)', type: 'number', group: 'Sessions' },
             { name: 'maxDailyBookings', label: 'Max bookings per day', type: 'number', group: 'Sessions' },
-            { name: 'meetingLinkTemplate', label: 'Meeting link', type: 'text', group: 'Sessions', colSpan: 2 },
+            { name: 'meetingLinkTemplate', label: 'Meeting link', type: 'url', group: 'Sessions', colSpan: 2 },
             { name: 'availability', label: 'Availability (JSON)', type: 'json', group: 'Sessions', colSpan: 2, help: 'Array of { weekday, startTime, endTime, isActive }' },
             { name: 'isAcceptingLeads', label: 'Accepting new leads', type: 'boolean', group: 'Publishing' },
             { name: 'isFeatured', label: 'Featured', type: 'boolean', group: 'Publishing' },
@@ -847,7 +852,7 @@ export const ADMIN_RESOURCES: Record<string, AdminResource> = {
             { name: 'targetExam', label: 'Target exam', type: 'reference', refModel: 'Exam', refLabelField: 'shortName', group: 'Targeting' },
             { name: 'targetState', label: 'Target state', type: 'reference', refModel: 'State', refLabelField: 'name', group: 'Targeting' },
             { name: 'internalUrl', label: 'Internal URL', type: 'text', group: 'Links', colSpan: 2 },
-            { name: 'externalUrl', label: 'External URL', type: 'text', group: 'Links', colSpan: 2 },
+            { name: 'externalUrl', label: 'External URL', type: 'url', group: 'Links', colSpan: 2 },
             { name: 'publishDate', label: 'Publish date', type: 'datetime', required: true, group: 'Publishing' },
             { name: 'expiryDate', label: 'Expiry date', type: 'datetime', group: 'Publishing' },
             { name: 'showInTrending', label: 'Show in trending feed', type: 'boolean', group: 'Publishing' },
@@ -893,11 +898,11 @@ export const ADMIN_RESOURCES: Record<string, AdminResource> = {
             { name: 'subject', label: 'Subject', type: 'text', group: 'Basics' },
             { name: 'description', label: 'Description', type: 'textarea', group: 'Content', colSpan: 2 },
             { name: 'contentHtml', label: 'Content', type: 'richtext', group: 'Content', colSpan: 2 },
-            { name: 'fileUrl', label: 'File URL', type: 'text', group: 'Files', colSpan: 2 },
+            { name: 'fileUrl', label: 'File URL', type: 'url', group: 'Files', colSpan: 2 },
             { name: 'thumbnail', label: 'Thumbnail', type: 'image', imageAspect: 'video', group: 'Media' },
             { name: 'videoUrl', label: 'Video', type: 'video', group: 'Media', colSpan: 2 },
             { name: 'fileSizeKb', label: 'File size (KB)', type: 'number', group: 'Files' },
-            { name: 'externalUrl', label: 'External URL', type: 'text', group: 'Files' },
+            { name: 'externalUrl', label: 'External URL', type: 'url', group: 'Files' },
             { name: 'videoUrl', label: 'Video URL', type: 'text', group: 'Files', colSpan: 2 },
             { name: 'durationMinutes', label: 'Duration (minutes)', type: 'number', group: 'Test settings' },
             { name: 'questionCount', label: 'Questions', type: 'number', group: 'Test settings' },
@@ -1073,7 +1078,7 @@ export const ADMIN_RESOURCES: Record<string, AdminResource> = {
             { name: 'year', label: 'Year', type: 'number', required: true, group: 'Basics' },
             { name: 'rank', label: 'Rank', type: 'number', required: true, group: 'Basics' },
             { name: 'score', label: 'Score', type: 'number', step: 0.01, group: 'Basics' },
-            { name: 'sourceUrl', label: 'Source URL', type: 'text', group: 'Basics', colSpan: 2 },
+            { name: 'sourceUrl', label: 'Source URL', type: 'url', group: 'Basics', colSpan: 2 },
             entityStatusField,
         ],
     },

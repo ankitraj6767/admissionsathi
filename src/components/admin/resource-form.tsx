@@ -12,6 +12,7 @@ import { RichTextEditor } from '@/components/admin/rich-text-editor';
 import { ImageField, type ImageValue } from '@/components/admin/image-field';
 import { GalleryField, type GalleryItemValue } from '@/components/admin/gallery-field';
 import { VideoUrlField } from '@/components/admin/video-url-field';
+import { UrlField } from '@/components/admin/url-field';
 import { cn, slugify } from '@/lib/utils';
 import type { AdminField, AdminResource } from '@/config/admin-resources';
 
@@ -33,6 +34,49 @@ function readPath(values: Record<string, unknown>, path: string): unknown {
         if (value && typeof value === 'object') return (value as Record<string, unknown>)[key];
         return undefined;
     }, values);
+}
+
+/**
+ * Reads a field out of React Hook Form state, nested path first then literal key.
+ *
+ * RHF treats `.` in a field name as a path, so editing `contact.website` writes
+ * `{ contact: { website } }` while the untouched default still sits under the
+ * literal `'contact.website'` key. Resolving nested-first is what makes an edit
+ * win over the stale default; the literal fallback mirrors RHF's own `get` and is
+ * what returns the stored value for a field nobody touched.
+ */
+function readFormValue(values: Record<string, unknown>, path: string): unknown {
+    if (!path.includes('.')) return values[path];
+
+    const nested = readPath(values, path);
+    return nested === undefined ? values[path] : nested;
+}
+
+/**
+ * Collapses RHF state back into the flat, dotted payload the resource schema and
+ * the Mongo `$set` are keyed by. Driven by the field list rather than by walking
+ * the object, so a stray nested key can never reach the server.
+ */
+function toFlatPayload(
+    fields: AdminField[],
+    values: Record<string, unknown>,
+): Record<string, unknown> {
+    const payload: Record<string, unknown> = {};
+    fields
+        .filter((field) => !field.readOnly)
+        .forEach((field) => {
+            payload[field.name] = readFormValue(values, field.name);
+        });
+    return payload;
+}
+
+/** Field errors are stored nested for dotted names, so they read the same way. */
+function readFieldError(
+    errors: Record<string, unknown>,
+    path: string,
+): string | undefined {
+    const entry = readFormValue(errors, path) as { message?: unknown } | undefined;
+    return typeof entry?.message === 'string' ? entry.message : undefined;
 }
 
 function toInputValue(field: AdminField, value: unknown): unknown {
@@ -103,10 +147,12 @@ export function ResourceForm({
         setError(null);
         setMessage(null);
 
+        const payload = toFlatPayload(resource.fields, values);
+
         const result =
             mode === 'create'
-                ? await createResourceAction(resource.key, values)
-                : await updateResourceAction(resource.key, docId!, values);
+                ? await createResourceAction(resource.key, payload)
+                : await updateResourceAction(resource.key, docId!, payload);
 
         if (result.ok) {
             setMessage(result.message ?? 'Saved.');
@@ -134,7 +180,7 @@ export function ResourceForm({
     };
 
     const renderField = (field: AdminField) => {
-        const fieldError = errors[field.name]?.message as string | undefined;
+        const fieldError = readFieldError(errors as Record<string, unknown>, field.name);
         const id = `field-${field.name.replace(/\./g, '-')}`;
 
         if (field.type === 'boolean') {
@@ -204,6 +250,23 @@ export function ResourceForm({
                                     value={(controlled.value as GalleryItemValue[]) ?? []}
                                     onChange={controlled.onChange}
                                     invalid={Boolean(fieldError)}
+                                />
+                            )}
+                        />
+                    );
+                case 'url':
+                    return (
+                        <Controller
+                            name={field.name}
+                            control={control}
+                            render={({ field: controlled }) => (
+                                <UrlField
+                                    id={id}
+                                    value={typeof controlled.value === 'string' ? controlled.value : ''}
+                                    onChange={controlled.onChange}
+                                    onBlur={controlled.onBlur}
+                                    invalid={Boolean(fieldError)}
+                                    placeholder={field.placeholder}
                                 />
                             )}
                         />
