@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-import { connectToDatabase } from '@/db/connect';
-import { MediaAsset } from '@/db/models/site.model';
+import { registerUploadedAsset } from '@/services/media.service';
 import { fileKind, uploadFile, validateUpload } from '@/lib/storage';
 import { getCurrentActor } from '@/lib/auth/session';
 import { can } from '@/lib/auth/rbac';
@@ -47,8 +46,7 @@ export async function POST(request: NextRequest) {
 
         const stored = await uploadFile(file, folder);
 
-        await connectToDatabase();
-        const asset = await MediaAsset.create({
+        const asset = await registerUploadedAsset({
             fileName: stored.fileName,
             originalName: file.name,
             url: stored.url,

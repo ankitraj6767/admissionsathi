@@ -1,13 +1,17 @@
 'use server';
 
 import { predictorLeadSchema, predictorRunSchema } from '@/schemas/predictor.schema';
-import { attachUserToSession, runPrediction, type PredictionResult } from '@/services/predictor.service';
+import {
+    attachUserToSession,
+    getPredictionSessionSummary,
+    linkLeadToPredictionSession,
+    runPrediction,
+    type PredictionResult,
+} from '@/services/predictor.service';
 import { createLeadFromForm } from '@/services/lead.service';
 import { getCurrentActor } from '@/lib/auth/session';
 import { RATE_LIMITS, rateLimit } from '@/lib/rate-limit';
 import { NotFoundError, fail, runAction, succeed } from '@/lib/action-helpers';
-import { connectToDatabase } from '@/db/connect';
-import { PredictionSession } from '@/db/models/predictor.model';
 import type { ActionResult } from '@/types/common';
 
 /** Runs a predictor and returns the probability bands. */
@@ -47,8 +51,7 @@ export async function savePredictorLeadAction(
     return runAction({ action: 'predictor.lead' }, async () => {
         const data = predictorLeadSchema.parse(input);
 
-        await connectToDatabase();
-        const session = await PredictionSession.findById(data.sessionId).exec();
+        const session = await getPredictionSessionSummary(data.sessionId);
         if (!session) throw new NotFoundError('Prediction session expired. Please run the predictor again.');
 
         const actor = await getCurrentActor();
@@ -69,9 +72,7 @@ export async function savePredictorLeadAction(
             userId: actor?.id,
         });
 
-        session.leadCaptured = true;
-        session.lead = lead._id;
-        await session.save();
+        await linkLeadToPredictionSession(session.id, String(lead._id));
 
         return succeed({ reference: lead.reference }, 'Saved. A counsellor will review your result list.');
     });

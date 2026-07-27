@@ -1,15 +1,29 @@
 import 'server-only';
 import { connectToDatabase } from '@/db/connect';
-import { College, CollegeCourse } from '@/db/models/college.model';
 import { COLLEGE_TAB_SEGMENTS } from '@/config/constants';
-import { Article, NewsPost, Resource } from '@/db/models/content.model';
-import { Counsellor } from '@/db/models/counselling.model';
-import { Course, CourseCategory } from '@/db/models/course.model';
-import { Exam } from '@/db/models/exam.model';
-import { LoanProvider, Scholarship } from '@/db/models/finance.model';
-import { City, State } from '@/db/models/geo.model';
-import { Predictor } from '@/db/models/predictor.model';
-import { StaticPage } from '@/db/models/site.model';
+import {
+    distinctOfferedCourseIds,
+    listCollegeSitemapSlugs,
+} from '@/db/repositories/college.repository';
+import {
+    listArticleSitemapSlugs,
+    listNewsSitemapSlugs,
+    listResourceSitemapSlugs,
+} from '@/db/repositories/content.repository';
+import { listCounsellorSitemapSlugs } from '@/db/repositories/counsellor.repository';
+import {
+    listCourseCategorySitemapSlugs,
+    listCourseSitemapSlugs,
+    listCourseSlugsByIds,
+} from '@/db/repositories/course.repository';
+import { listExamSitemapSlugs } from '@/db/repositories/exam.repository';
+import {
+    listLoanProviderSitemapSlugs,
+    listScholarshipSitemapSlugs,
+} from '@/db/repositories/finance.repository';
+import { listCitySitemapSlugs, listStateSitemapSlugs } from '@/db/repositories/geo.repository';
+import { listPredictorSitemapSlugs } from '@/db/repositories/predictor.repository';
+import { listStaticPageSitemapSlugs } from '@/db/repositories/site.repository';
 import { CACHE_TAGS, CACHE_TTL, cached } from '@/lib/cache';
 import { logger } from '@/lib/logger';
 
@@ -51,34 +65,6 @@ export type SitemapShard = (typeof SITEMAP_SHARDS)[number];
 
 /** Hard ceiling per shard. Google rejects sitemaps above 50,000 URLs. */
 const SHARD_LIMIT = 45_000;
-
-type SlugRow = { slug: string; updatedAt?: Date };
-
-/** Shared lean projection for every slug-addressable published collection. */
-async function publishedSlugs(
-    model: {
-        find: (filter: Record<string, unknown>) => {
-            select: (p: Record<string, number>) => {
-                sort: (s: Record<string, 1 | -1>) => {
-                    limit: (n: number) => { lean: () => { exec: () => Promise<unknown> } };
-                };
-            };
-        };
-    },
-    filter: Record<string, unknown>,
-): Promise<SlugRow[]> {
-    const rows = (await model
-        .find(filter)
-        .select({ slug: 1, updatedAt: 1 })
-        .sort({ updatedAt: -1 })
-        .limit(SHARD_LIMIT)
-        .lean()
-        .exec()) as SlugRow[];
-    return rows.filter((row) => Boolean(row?.slug));
-}
-
-const PUBLISHED = { status: 'published', isDeleted: { $ne: true }, 'seo.noIndex': { $ne: true } };
-const ACTIVE = { status: 'active', isDeleted: { $ne: true }, 'seo.noIndex': { $ne: true } };
 
 /**
  * Public routes that are not derived from a database row.
@@ -133,7 +119,7 @@ async function loadShard(shard: SitemapShard): Promise<SitemapEntry[]> {
             }));
 
         case 'colleges': {
-            const rows = await publishedSlugs(College, PUBLISHED);
+            const rows = await listCollegeSitemapSlugs(SHARD_LIMIT);
             return rows.map((row) => ({
                 url: `/colleges/${row.slug}`,
                 lastModified: row.updatedAt ?? now,
@@ -147,12 +133,7 @@ async function loadShard(shard: SitemapShard): Promise<SitemapEntry[]> {
             // placements…), so they are indexed. Capped to the most recently
             // updated colleges to keep the shard within the URL limit.
             const perCollege = COLLEGE_TAB_SEGMENTS.length || 1;
-            const rows = (await College.find(PUBLISHED)
-                .select({ slug: 1, updatedAt: 1 })
-                .sort({ updatedAt: -1 })
-                .limit(Math.floor(SHARD_LIMIT / perCollege))
-                .lean()
-                .exec()) as SlugRow[];
+            const rows = await listCollegeSitemapSlugs(Math.floor(SHARD_LIMIT / perCollege));
 
             return rows.flatMap((row) =>
                 COLLEGE_TAB_SEGMENTS.map((segment) => ({
@@ -166,8 +147,8 @@ async function loadShard(shard: SitemapShard): Promise<SitemapEntry[]> {
 
         case 'courses': {
             const [courses, categories] = await Promise.all([
-                publishedSlugs(Course, PUBLISHED),
-                publishedSlugs(CourseCategory, ACTIVE),
+                listCourseSitemapSlugs(SHARD_LIMIT),
+                listCourseCategorySitemapSlugs(SHARD_LIMIT),
             ]);
 
             const detailTabs = ['colleges', 'specializations', 'admission', 'syllabus', 'career', 'fees'];
@@ -197,7 +178,7 @@ async function loadShard(shard: SitemapShard): Promise<SitemapEntry[]> {
         }
 
         case 'exams': {
-            const rows = await publishedSlugs(Exam, PUBLISHED);
+            const rows = await listExamSitemapSlugs(SHARD_LIMIT);
             const sections = [
                 'dates',
                 'eligibility',
@@ -228,7 +209,7 @@ async function loadShard(shard: SitemapShard): Promise<SitemapEntry[]> {
 
         case 'predictors': {
             // Predictor uses the *content* status enum, not the entity one.
-            const rows = await publishedSlugs(Predictor, PUBLISHED);
+            const rows = await listPredictorSitemapSlugs(SHARD_LIMIT);
             return rows.map((row) => ({
                 url: `/predictors/${row.slug}`,
                 lastModified: row.updatedAt ?? now,
@@ -238,7 +219,7 @@ async function loadShard(shard: SitemapShard): Promise<SitemapEntry[]> {
         }
 
         case 'articles': {
-            const rows = await publishedSlugs(Article, PUBLISHED);
+            const rows = await listArticleSitemapSlugs(SHARD_LIMIT);
             return rows.map((row) => ({
                 url: `/articles/${row.slug}`,
                 lastModified: row.updatedAt ?? now,
@@ -248,7 +229,7 @@ async function loadShard(shard: SitemapShard): Promise<SitemapEntry[]> {
         }
 
         case 'news': {
-            const rows = await publishedSlugs(NewsPost, PUBLISHED);
+            const rows = await listNewsSitemapSlugs(SHARD_LIMIT);
             return rows.map((row) => ({
                 url: `/news/${row.slug}`,
                 lastModified: row.updatedAt ?? now,
@@ -258,12 +239,7 @@ async function loadShard(shard: SitemapShard): Promise<SitemapEntry[]> {
         }
 
         case 'resources': {
-            const rows = (await Resource.find(PUBLISHED)
-                .select({ slug: 1, updatedAt: 1, type: 1 })
-                .sort({ updatedAt: -1 })
-                .limit(SHARD_LIMIT)
-                .lean()
-                .exec()) as (SlugRow & { type?: string })[];
+            const rows = await listResourceSitemapSlugs(SHARD_LIMIT);
 
             // Each resource type has its own listing route.
             const prefixByType: Record<string, string> = {
@@ -285,7 +261,7 @@ async function loadShard(shard: SitemapShard): Promise<SitemapEntry[]> {
         }
 
         case 'scholarships': {
-            const rows = await publishedSlugs(Scholarship, PUBLISHED);
+            const rows = await listScholarshipSitemapSlugs(SHARD_LIMIT);
             return rows.map((row) => ({
                 url: `/scholarships/${row.slug}`,
                 lastModified: row.updatedAt ?? now,
@@ -296,7 +272,7 @@ async function loadShard(shard: SitemapShard): Promise<SitemapEntry[]> {
 
         case 'finance': {
             // LoanProvider uses the *content* status enum, not the entity one.
-            const rows = await publishedSlugs(LoanProvider, PUBLISHED);
+            const rows = await listLoanProviderSitemapSlugs(SHARD_LIMIT);
             return rows.map((row) => ({
                 url: `/education-loans/${row.slug}`,
                 lastModified: row.updatedAt ?? now,
@@ -306,7 +282,7 @@ async function loadShard(shard: SitemapShard): Promise<SitemapEntry[]> {
         }
 
         case 'counsellors': {
-            const rows = await publishedSlugs(Counsellor, ACTIVE);
+            const rows = await listCounsellorSitemapSlugs(SHARD_LIMIT);
             return rows.map((row) => ({
                 url: `/counsellors/${row.slug}`,
                 lastModified: row.updatedAt ?? now,
@@ -320,30 +296,13 @@ async function loadShard(shard: SitemapShard): Promise<SitemapEntry[]> {
             // Only emitted where the page will actually have content, so we do
             // not publish thin auto-generated URLs.
             const [states, cities, courseSlugs] = await Promise.all([
-                publishedSlugs(State, ACTIVE),
-                (async () => {
-                    const rows = (await City.find({ ...ACTIVE, collegeCount: { $gt: 0 } })
-                        .select({ slug: 1, updatedAt: 1 })
-                        .sort({ collegeCount: -1 })
-                        .limit(SHARD_LIMIT)
-                        .lean()
-                        .exec()) as SlugRow[];
-                    return rows.filter((row) => Boolean(row?.slug));
-                })(),
+                listStateSitemapSlugs(SHARD_LIMIT),
+                listCitySitemapSlugs(SHARD_LIMIT),
                 (async () => {
                     // Only courses that at least one college actually offers, so
                     // `/colleges/course/[slug]` never resolves to an empty page.
-                    const courseIds = (await CollegeCourse.distinct('course', {
-                        status: 'active',
-                    }).exec()) as unknown[];
-                    if (courseIds.length === 0) return [] as string[];
-
-                    const rows = (await Course.find({ _id: { $in: courseIds }, ...PUBLISHED })
-                        .select({ slug: 1 })
-                        .limit(5_000)
-                        .lean()
-                        .exec()) as SlugRow[];
-                    return rows.map((row) => row.slug).filter(Boolean);
+                    const courseIds = await distinctOfferedCourseIds();
+                    return listCourseSlugsByIds(courseIds, 5_000);
                 })(),
             ]);
 
@@ -370,7 +329,7 @@ async function loadShard(shard: SitemapShard): Promise<SitemapEntry[]> {
         }
 
         case 'pages': {
-            const rows = await publishedSlugs(StaticPage, PUBLISHED);
+            const rows = await listStaticPageSitemapSlugs(SHARD_LIMIT);
             return rows.map((row) => ({
                 url: `/${row.slug}`,
                 lastModified: row.updatedAt ?? now,

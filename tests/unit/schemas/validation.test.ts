@@ -103,10 +103,23 @@ describe('leadFormSchema', () => {
         if (!result.success) expect(fieldErrors(result.error).name).toBe('Enter your full name');
     });
 
-    it('rejects a filled honeypot', () => {
-        expect(leadFormSchema.safeParse({ ...validLead, website: 'http://spam.example' }).success).toBe(
-            false,
-        );
+    /**
+     * The honeypot parses successfully on purpose. `submitLeadAction` inspects
+     * `website` and answers a filled one with a fake success, so a bot never
+     * learns the field is a trap — a validation error would leak exactly that.
+     */
+    it('accepts a filled honeypot so the action can answer with a fake success', () => {
+        const result = leadFormSchema.safeParse({ ...validLead, website: 'http://spam.example' });
+
+        expect(result.success).toBe(true);
+        if (result.success) expect(result.data.website).toBe('http://spam.example');
+    });
+
+    it('treats an empty honeypot as a normal human submission', () => {
+        const result = leadFormSchema.safeParse({ ...validLead, website: '' });
+
+        expect(result.success).toBe(true);
+        if (result.success) expect(result.data.website).toBe('');
     });
 
     it('rejects a short idempotency key', () => {

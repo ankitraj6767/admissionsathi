@@ -36,6 +36,32 @@ Admission Sathi is one Next.js 16 App Router application. All data access happen
 
 Server Components read through the same service layer directly (no action round-trip), which is why most public pages have zero client-side data fetching.
 
+### The layering is enforced, not aspirational
+
+Two rules hold across the codebase, and both are cheap to verify:
+
+```bash
+# No UI or action file may import a Mongoose model as a value, or open a connection.
+grep -rE "from '@/db/models" src/app src/actions | grep -v 'import type'   # → no matches
+grep -rn 'connectToDatabase' src/app src/actions                          # → no matches
+
+# No service may build an ad-hoc query chain; queries live in repositories.
+grep -rE "\.(find|findOne|create|updateOne|deleteMany|countDocuments|aggregate|distinct)\(" src/services
+```
+
+`import type { CollegeDoc }` in a page or service is fine — types are erased and
+carry no runtime dependency. What is not fine is a page holding a live model
+handle, because that is how a query ends up inside a component.
+
+Every read goes through the helpers in `src/db/repositories/base.repository.ts`
+(`paginate`, `findLean`, `findOneLean`, `countDocs`, `aggregateLean`,
+`distinctLean`, `toPlain`). They exist so that three invariants are structural
+rather than remembered per query:
+
+- **Nothing is unbounded.** `paginate` clamps `pageSize` to `siteConfig.pagination.maxLimit`; `findLean` caps at 500 rows.
+- **Nothing leaks a Mongoose document into React.** Everything is `.lean()`, and `toPlain()` converts `ObjectId`/`Date` to JSON-safe values at the RSC boundary.
+- **A credential-less `next build` still completes.** When `src/lib/env.ts` is running on placeholders, the read helpers short-circuit to empty results instead of attempting a connection, so pre-rendering finishes on a machine with no database. At runtime `connectToDatabase()` calls `assertRuntimeEnv()` and refuses to serve traffic on placeholder credentials.
+
 ## Why the browser never touches MongoDB
 
 - The connection string lives in `MONGODB_URI`, which is only read inside `src/lib/env.ts`. That file starts with `import 'server-only'`, so any import chain that reaches a Client Component fails the build instead of leaking the secret.

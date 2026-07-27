@@ -8,11 +8,28 @@ import {
     type CollegeDoc,
     type RankingDoc,
 } from '@/db/models/college.model';
+import { connectToDatabase } from '@/db/connect';
 import { escapeRegex } from '@/lib/utils';
-import { countDocs, findLean, findOneLean, paginate } from './base.repository';
+import {
+    aggregateLean,
+    countDocs,
+    distinctLean,
+    findLean,
+    findOneLean,
+    listSlugRows,
+    paginate,
+    type SlugRow,
+} from './base.repository';
 import type { Paginated } from '@/types/common';
 
 const PUBLISHED = { status: 'published' as const };
+
+/** Published, indexable and not soft-deleted — what the sitemap may advertise. */
+const SITEMAP_FILTER = {
+    status: 'published',
+    isDeleted: { $ne: true },
+    'seo.noIndex': { $ne: true },
+} as const;
 
 export const COLLEGE_CARD_PROJECTION = {
     name: 1,
@@ -42,14 +59,16 @@ export const COLLEGE_CARD_PROJECTION = {
     description: 1,
 } as const;
 
+/**
+ * Repository-level filters. Callers pass resolved ids, not slugs: slug lookup is
+ * the service's job (`resolveCollegeFilters`), which keeps this layer free of a
+ * second round-trip and makes an unknown slug an explicit decision up there.
+ */
 export interface CollegeListFilters {
     q?: string;
-    stateSlug?: string;
     stateId?: string;
-    citySlug?: string;
     cityId?: string;
     courseId?: string;
-    courseSlug?: string;
     categoryId?: string;
     examId?: string;
     ownership?: string[];
@@ -201,6 +220,55 @@ export async function countPublishedColleges(filter: FilterQuery<CollegeDoc> = {
     return countDocs(College, { ...PUBLISHED, ...filter });
 }
 
+/**
+ * Indexable college slugs for the sitemap, most recently updated first.
+ * `noIndex` rows are excluded so the sitemap never advertises a page that asks
+ * crawlers to stay away.
+ */
+export async function listCollegeSitemapSlugs(limit: number): Promise<SlugRow[]> {
+    return listSlugRows<CollegeDoc>(College, SITEMAP_FILTER, { limit });
+}
+
+/** Ownership facet counts for the college filter panel. */
+export async function aggregateCollegeOwnershipCounts(): Promise<{ _id: string; count: number }[]> {
+    return aggregateLean<{ _id: string; count: number }>(College, [
+        { $match: { status: 'published', isDeleted: { $ne: true } } },
+        { $group: { _id: '$ownership', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+    ]);
+}
+
+/** Ids for a set of slugs, used when persisting a comparison. */
+export async function listCollegeIdsBySlugs(slugs: string[]): Promise<unknown[]> {
+    if (slugs.length === 0) return [];
+    const rows = await findLean<CollegeDoc>(
+        College,
+        { slug: { $in: slugs } },
+        { projection: { _id: 1 }, limit: slugs.length, sort: { name: 1 } },
+    );
+    return rows.map((row) => row._id);
+}
+
+/** Bumps the "added to a comparison" counter for every college in a comparison. */
+export async function incrementCollegeCompareCounts(slugs: string[]): Promise<void> {
+    if (slugs.length === 0) return;
+    await connectToDatabase();
+    await College.updateMany({ slug: { $in: slugs } }, { $inc: { compareCount: 1 } }).exec();
+}
+
+/** Best-effort page-view counter. */
+export async function incrementCollegeViewCount(id: string): Promise<void> {
+    await connectToDatabase();
+    await College.updateOne({ _id: id }, { $inc: { viewCount: 1 } }).exec();
+}
+
+/** Denormalised name for a slug, for the CRM fields on a lead. */
+export async function findCollegeNameBySlug(
+    slug: string,
+): Promise<Pick<CollegeDoc, '_id' | 'name'> | null> {
+    return findOneLean<CollegeDoc>(College, { slug }, { projection: { name: 1 } });
+}
+
 /* ----------------------------- college courses --------------------------- */
 
 export async function listCollegeCourses(
@@ -212,6 +280,31 @@ export async function listCollegeCourses(
         { college: collegeId, status: 'active' },
         { sort: { level: 1, courseName: 1 }, limit },
     );
+}
+
+/**
+ * How many active programmes a college lists, capped at `limit`.
+ * The comparison table only needs the number, but the cap keeps the read bounded.
+ */
+export async function countActiveCollegeCourses(
+    collegeId: unknown,
+    limit = 200,
+): Promise<number> {
+    const rows = await findLean<CollegeCourseDoc>(
+        CollegeCourse,
+        { college: collegeId, status: 'active' } as FilterQuery<CollegeCourseDoc>,
+        { limit },
+    );
+    return rows.length;
+}
+
+/**
+ * Ids of every course at least one college actively offers.
+ * The sitemap uses it so `/colleges/course/[slug]` is only published for courses
+ * that will render a non-empty page.
+ */
+export async function distinctOfferedCourseIds(): Promise<unknown[]> {
+    return distinctLean<CollegeCourseDoc, unknown>(CollegeCourse, 'course', { status: 'active' });
 }
 
 export async function listCollegesOfferingCourse(
@@ -234,4 +327,57 @@ export async function listCollegeRankings(collegeId: string): Promise<RankingDoc
         { college: collegeId, status: 'active' },
         { sort: { year: -1, rank: 1 }, limit: 20 },
     );
+}
+
+/* ------------------------- admin counts & recency ------------------------ */
+
+export async function countColleges(filter: FilterQuery<CollegeDoc> = {}): Promise<number> {
+    return countDocs(College, filter);
+}
+
+export async function listRecentlyUpdatedColleges(limit = 5): Promise<CollegeDoc[]> {
+    return findLean<CollegeDoc>(
+        College,
+        {},
+        {
+            sort: { updatedAt: -1 },
+            limit,
+            projection: { name: 1, slug: 1, status: 1, updatedAt: 1 },
+        },
+    );
+}
+
+/** Keeps the denormalised shortlist counter in step with SavedItem rows. */
+export async function adjustCollegeSavedCount(collegeId: string, delta: 1 | -1): Promise<void> {
+    await connectToDatabase();
+    await College.updateOne({ _id: collegeId }, { $inc: { savedCount: delta } }).exec();
+}
+
+/**
+ * Minimal identity lookup by id, including unpublished colleges.
+ * Review submission needs the denormalised name/slug it stamps on the review.
+ */
+export async function findCollegeIdentity(
+    id: string,
+): Promise<Pick<CollegeDoc, '_id' | 'name' | 'slug'> | null> {
+    return findOneLean<CollegeDoc>(College, { _id: id }, { projection: { name: 1, slug: 1 } });
+}
+
+export interface CollegeRatingValues {
+    overall: number;
+    placement: number;
+    faculty: number;
+    infrastructure: number;
+    campusLife: number;
+    valueForMoney: number;
+    count: number;
+}
+
+/** Writes the denormalised rating block recomputed from approved reviews. */
+export async function setCollegeRating(
+    collegeId: string,
+    rating: CollegeRatingValues,
+): Promise<void> {
+    await connectToDatabase();
+    await College.updateOne({ _id: collegeId }, { $set: { rating } }).exec();
 }

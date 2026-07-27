@@ -3,8 +3,7 @@ import { notFound } from 'next/navigation';
 import { CtaBanner, RichText, SectionCard } from '@/components/shared/content-blocks';
 import { EmptyState } from '@/components/ui/primitives';
 import { getCollegeDetail } from '@/services/college.service';
-import { Scholarship, type ScholarshipDoc } from '@/db/models/finance.model';
-import { findLean, toPlain } from '@/db/repositories/base.repository';
+import { listScholarshipsForCollege } from '@/services/finance.service';
 import { formatCompactINR, formatDate } from '@/lib/utils';
 
 export default async function CollegeScholarshipsPage({
@@ -17,12 +16,8 @@ export default async function CollegeScholarshipsPage({
     if (!detail || 'redirectTo' in detail) notFound();
     const { college } = detail;
 
-    const scholarships = toPlain(
-        await findLean<ScholarshipDoc>(
-            Scholarship,
-            { status: 'published' },
-            { limit: 8, sort: { isFeatured: -1 } },
-        ),
+    const scholarships = await listScholarshipsForCollege(
+        college.state ? String(college.state) : undefined,
     );
 
     return (

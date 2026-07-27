@@ -1,6 +1,9 @@
 import 'server-only';
-import { connectToDatabase } from '@/db/connect';
-import { Redirect } from '@/db/models/site.model';
+import {
+    findExactRedirect,
+    incrementRedirectHitBySource,
+    listRegexRedirects,
+} from '@/db/repositories/site.repository';
 import { logger } from '@/lib/logger';
 
 export interface ResolvedRedirect {
@@ -27,12 +30,7 @@ export async function resolveRedirect(pathname: string): Promise<ResolvedRedirec
     const source = normalisePath(pathname);
     if (!source || source === '/') return null;
 
-    await connectToDatabase();
-
-    const exact = await Redirect.findOne({ source, status: 'active', isRegex: false })
-        .select({ destination: 1, statusCode: 1 })
-        .lean()
-        .exec();
+    const exact = await findExactRedirect(source);
 
     if (exact) {
         return {
@@ -42,11 +40,7 @@ export async function resolveRedirect(pathname: string): Promise<ResolvedRedirec
         };
     }
 
-    const regexRules = await Redirect.find({ status: 'active', isRegex: true })
-        .select({ source: 1, destination: 1, statusCode: 1 })
-        .limit(200)
-        .lean()
-        .exec();
+    const regexRules = await listRegexRedirects();
 
     for (const rule of regexRules) {
         try {
@@ -71,13 +65,7 @@ export async function resolveRedirect(pathname: string): Promise<ResolvedRedirec
  * write cannot delay the redirect response.
  */
 export function recordRedirectHit(pathname: string): void {
-    const source = normalisePath(pathname);
-    void Redirect.updateOne(
-        { source, status: 'active' },
-        { $inc: { hitCount: 1 }, $set: { lastHitAt: new Date() } },
-    )
-        .exec()
-        .catch(() => {
-            /* metrics only */
-        });
+    void incrementRedirectHitBySource(normalisePath(pathname)).catch(() => {
+        /* metrics only */
+    });
 }

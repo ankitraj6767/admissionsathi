@@ -2,8 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { connectToDatabase } from '@/db/connect';
-import { Role } from '@/db/models/role.model';
+import { getRoleByKey, updateRolePermissions } from '@/services/role.service';
 import { PERMISSIONS, ROLES } from '@/config/permissions';
 import { requirePermission } from '@/lib/auth/session';
 import { recordAudit } from '@/services/audit.service';
@@ -30,20 +29,21 @@ export async function updateRolePermissionsAction(
             return fail('The Super Admin role always holds every permission and cannot be reduced.', 'CONFLICT');
         }
 
-        await connectToDatabase();
-        const role = await Role.findOne({ key: data.roleKey }).exec();
+        const role = await getRoleByKey(data.roleKey);
         if (!role) throw new NotFoundError('Role not found.');
 
-        const previous = [...role.permissions];
-        role.permissions = data.permissions;
-        role.updatedBy = actor.id as never;
-        await role.save();
+        const previous = role.permissions;
+
+        // The data layer refuses the immutable super admin row; anything else that
+        // fails to match here disappeared between the read and the write.
+        const result = await updateRolePermissions(data.roleKey, data.permissions, actor.id);
+        if (!result.ok) throw new NotFoundError('Role not found.');
 
         await recordAudit({
             actor,
             action: 'role.update_permissions',
             entity: 'Role',
-            entityId: String(role._id),
+            entityId: role.id,
             entityLabel: role.name,
             previousValues: { permissions: previous },
             newValues: { permissions: data.permissions },

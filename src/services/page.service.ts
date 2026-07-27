@@ -1,6 +1,9 @@
 import 'server-only';
-import { connectToDatabase } from '@/db/connect';
-import { StaticPage, type StaticPageDoc } from '@/db/models/site.model';
+import type { StaticPageDoc } from '@/db/models/site.model';
+import {
+    findStaticPageBySlug,
+    listPublishedStaticPages,
+} from '@/db/repositories/site.repository';
 import { CACHE_TAGS, CACHE_TTL, cached } from '@/lib/cache';
 import { logger } from '@/lib/logger';
 import type { SeoMeta } from '@/db/models/shared/base';
@@ -58,26 +61,7 @@ function toView(page: LeanPage): StaticPageView {
 export const getPublishedPage = cached(
     async (slug: string): Promise<StaticPageView | null> => {
         try {
-            await connectToDatabase();
-            const page = (await StaticPage.findOne({
-                status: 'published',
-                $or: [{ slug }, { 'slugHistory.slug': slug }],
-            })
-                .select({
-                    title: 1,
-                    slug: 1,
-                    group: 1,
-                    excerpt: 1,
-                    contentHtml: 1,
-                    heroEyebrow: 1,
-                    showLastUpdated: 1,
-                    updatedAt: 1,
-                    publishedAt: 1,
-                    seo: 1,
-                })
-                .lean()
-                .exec()) as LeanPage | null;
-
+            const page = (await findStaticPageBySlug(slug)) as LeanPage | null;
             return page ? toView(page) : null;
         } catch (error) {
             logger.error('page.load_failed', {
@@ -98,14 +82,7 @@ export const getPublishedPage = cached(
 export const listPublishedPageLinks = cached(
     async (): Promise<StaticPageLink[]> => {
         try {
-            await connectToDatabase();
-            const rows = (await StaticPage.find({ status: 'published' })
-                .select({ title: 1, slug: 1, group: 1 })
-                .sort({ group: 1, displayOrder: 1, title: 1 })
-                .limit(200)
-                .lean()
-                .exec()) as { title: string; slug: string; group: StaticPageDoc['group'] }[];
-
+            const rows = await listPublishedStaticPages(200);
             return rows.map((row) => ({ title: row.title, slug: row.slug, group: row.group }));
         } catch (error) {
             logger.error('page.list_failed', {

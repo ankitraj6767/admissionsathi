@@ -2,9 +2,7 @@ import type { Metadata } from 'next';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { CutoffImport, type DatasetRow } from '@/components/admin/cutoff-import';
 import { SectionCard } from '@/components/shared/content-blocks';
-import { connectToDatabase } from '@/db/connect';
-import { Predictor, PredictorDataset } from '@/db/models/predictor.model';
-import { toPlain } from '@/db/repositories/base.repository';
+import { getCutoffDatasetScreenData } from '@/services/predictor.service';
 import { requirePermissionPage } from '@/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
@@ -13,37 +11,9 @@ export const metadata: Metadata = { title: 'Cut-off datasets' };
 
 export default async function AdminCutoffDatasetsPage() {
     await requirePermissionPage('cutoff.import');
-    await connectToDatabase();
 
-    const [predictors, datasets] = await Promise.all([
-        Predictor.find({ isDeleted: { $ne: true } })
-            .select('name slug')
-            .sort({ displayOrder: 1 })
-            .lean()
-            .exec()
-            .then(toPlain),
-        PredictorDataset.find()
-            .populate<{ predictor: { name: string } }>('predictor', 'name')
-            .sort({ createdAt: -1 })
-            .limit(60)
-            .lean()
-            .exec()
-            .then(toPlain),
-    ]);
-
-    const rows: DatasetRow[] = datasets.map((dataset) => ({
-        id: String(dataset._id),
-        predictorName: (dataset.predictor as unknown as { name?: string })?.name ?? '—',
-        name: dataset.name,
-        version: dataset.version,
-        year: dataset.year,
-        state: dataset.state,
-        rowCount: dataset.rowCount,
-        validRowCount: dataset.validRowCount,
-        invalidRowCount: dataset.invalidRowCount,
-        publishedAt: dataset.publishedAt ? String(dataset.publishedAt) : undefined,
-        createdAt: String(dataset.createdAt),
-    }));
+    const { predictors, datasets } = await getCutoffDatasetScreenData();
+    const rows: DatasetRow[] = datasets;
 
     return (
         <>
@@ -54,13 +24,7 @@ export default async function AdminCutoffDatasetsPage() {
                 breadcrumbs={[{ label: 'Cut-off datasets' }]}
             />
 
-            <CutoffImport
-                predictors={predictors.map((predictor) => ({
-                    label: predictor.name,
-                    value: String(predictor._id),
-                }))}
-                datasets={rows}
-            />
+            <CutoffImport predictors={predictors} datasets={rows} />
 
             <SectionCard className="mt-4" title="CSV format" icon="FileStack">
                 <p className="text-[12.5px] text-ink-soft">

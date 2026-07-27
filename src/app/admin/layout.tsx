@@ -1,10 +1,7 @@
 import type { Metadata } from 'next';
 import { AdminShell } from '@/components/admin/admin-shell';
 import { requireStaffPage } from '@/lib/auth/session';
-import { connectToDatabase } from '@/db/connect';
-import { Lead } from '@/db/models/lead.model';
-import { Review } from '@/db/models/content.model';
-import { Article } from '@/db/models/content.model';
+import { getAdminBadgeCounts } from '@/services/admin/dashboard.service';
 import { getSettings } from '@/services/settings.service';
 import { resolveBranding } from '@/lib/branding';
 
@@ -23,16 +20,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
     const actor = await requireStaffPage();
-    await connectToDatabase();
 
-    const [newLeads, pendingReviews, draftContent, settings] = await Promise.all([
-        Lead.countDocuments({ status: 'new' }).exec().catch(() => 0),
-        Review.countDocuments({ moderationStatus: 'pending' }).exec().catch(() => 0),
-        Article.countDocuments({ status: { $in: ['draft', 'in_review'] } })
-            .exec()
-            .catch(() => 0),
-        getSettings(),
-    ]);
+    const [badges, settings] = await Promise.all([getAdminBadgeCounts(), getSettings()]);
 
     return (
         <AdminShell
@@ -42,7 +31,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
                 roles: actor.roles,
                 permissions: actor.permissions,
             }}
-            badges={{ newLeads, pendingReviews, draftContent }}
+            badges={badges}
             branding={resolveBranding(settings)}
         >
             {children}

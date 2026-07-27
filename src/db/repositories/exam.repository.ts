@@ -1,11 +1,26 @@
 import 'server-only';
 import type { FilterQuery } from 'mongoose';
 import { Exam, ExamDate, type ExamDateDoc, type ExamDoc } from '@/db/models/exam.model';
+import { connectToDatabase } from '@/db/connect';
 import { escapeRegex } from '@/lib/utils';
-import { countDocs, findLean, findOneLean, paginate } from './base.repository';
+import {
+    countDocs,
+    findLean,
+    findOneLean,
+    listSlugRows,
+    paginate,
+    type SlugRow,
+} from './base.repository';
 import type { Paginated } from '@/types/common';
 
 const PUBLISHED = { status: 'published' as const };
+
+/** Published, indexable and not soft-deleted — what the sitemap may advertise. */
+const SITEMAP_FILTER = {
+    status: 'published',
+    isDeleted: { $ne: true },
+    'seo.noIndex': { $ne: true },
+} as const;
 
 export const EXAM_CARD_PROJECTION = {
     name: 1,
@@ -110,6 +125,54 @@ export async function examAutocomplete(term: string, limit = 6): Promise<ExamDoc
 
 export async function countPublishedExams(): Promise<number> {
     return countDocs(Exam, PUBLISHED);
+}
+
+/** Indexable exam slugs for the sitemap, most recently updated first. */
+export async function listExamSitemapSlugs(limit: number): Promise<SlugRow[]> {
+    return listSlugRows<ExamDoc>(Exam, SITEMAP_FILTER as FilterQuery<ExamDoc>, { limit });
+}
+
+/** Best-effort page-view counter. */
+export async function incrementExamViewCount(id: string): Promise<void> {
+    await connectToDatabase();
+    await Exam.updateOne({ _id: id }, { $inc: { viewCount: 1 } }).exec();
+}
+
+/** Short name + slug pairs for the exam picker in a filter panel. */
+export interface ExamOptionRow {
+    shortName: string;
+    slug: string;
+}
+
+/**
+ * Published exams reduced to picker options.
+ *
+ * `sort` is explicit because the college filter panel lists them in the curated
+ * display order while the course filter panel keeps the collection's own order.
+ */
+export async function listPublishedExamOptions(
+    options: { limit?: number; sort?: Record<string, 1 | -1> } = {},
+): Promise<ExamOptionRow[]> {
+    await connectToDatabase();
+    const query = Exam.find(PUBLISHED).select('shortName slug');
+    if (options.sort) query.sort(options.sort);
+    return query
+        .limit(options.limit ?? 20)
+        .lean<ExamOptionRow[]>()
+        .exec();
+}
+
+/** Resolves an exam slug to its id, for filter params that arrive as slugs. */
+export async function findExamIdBySlug(slug: string): Promise<string | null> {
+    const exam = await findOneLean<ExamDoc>(Exam, { slug }, { projection: { _id: 1 } });
+    return exam ? String(exam._id) : null;
+}
+
+/** Denormalised name for a slug, for the CRM fields on a lead. */
+export async function findExamNameBySlug(
+    slug: string,
+): Promise<Pick<ExamDoc, '_id' | 'name'> | null> {
+    return findOneLean<ExamDoc>(Exam, { slug }, { projection: { name: 1 } });
 }
 
 export async function listExamsByIds(ids: string[]): Promise<ExamDoc[]> {

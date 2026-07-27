@@ -1,15 +1,23 @@
 import 'server-only';
 import { connectToDatabase } from '@/db/connect';
-import { SearchQuery, SearchSynonym, type SearchSynonymDoc } from '@/db/models/system.model';
-import { findLean } from '@/db/repositories/base.repository';
+import type { SearchQueryDoc, SearchSynonymDoc } from '@/db/models/system.model';
+import { toPlain } from '@/db/repositories/base.repository';
+import {
+    createSearchQuery,
+    findSynonymsForTerm,
+    listAllSynonyms,
+    listRecentSearchQueries,
+    listTrendingSearchTerms,
+} from '@/db/repositories/system.repository';
+import { getTopSearchTerms, getZeroResultTerms } from '@/services/analytics.service';
 import { collegeAutocomplete } from '@/db/repositories/college.repository';
 import { courseAutocomplete } from '@/db/repositories/course.repository';
 import { examAutocomplete } from '@/db/repositories/exam.repository';
 import { articleAutocomplete } from '@/db/repositories/content.repository';
 import { cityAutocomplete, stateAutocomplete } from '@/db/repositories/geo.repository';
 import { listPredictors } from '@/db/repositories/predictor.repository';
-import { Scholarship, type ScholarshipDoc } from '@/db/models/finance.model';
-import { escapeRegex, formatCompactINR } from '@/lib/utils';
+import { scholarshipAutocomplete } from '@/db/repositories/finance.repository';
+import { formatCompactINR } from '@/lib/utils';
 import { logger } from '@/lib/logger';
 import type { SearchEntityType } from '@/config/constants';
 
@@ -55,11 +63,7 @@ const GROUP_LABELS: Record<SearchEntityType, string> = {
  */
 async function resolveSynonyms(term: string): Promise<{ terms: string[]; promoted: SearchHit[] }> {
     const normalized = term.trim().toLowerCase();
-    const rows = await findLean<SearchSynonymDoc>(
-        SearchSynonym,
-        { status: 'active', $or: [{ term: normalized }, { synonyms: normalized }] },
-        { limit: 5, sort: { displayOrder: 1 } },
-    ).catch(() => [] as SearchSynonymDoc[]);
+    const rows = await findSynonymsForTerm(normalized, 5).catch(() => [] as SearchSynonymDoc[]);
 
     const terms = new Set<string>([normalized]);
     const promoted: SearchHit[] = [];
@@ -83,12 +87,7 @@ async function resolveSynonyms(term: string): Promise<{ terms: string[]; promote
 }
 
 async function searchScholarships(term: string, limit = 3): Promise<SearchHit[]> {
-    const rx = new RegExp(escapeRegex(term), 'i');
-    const rows = await findLean<ScholarshipDoc>(
-        Scholarship,
-        { status: 'published', $or: [{ name: rx }, { provider: rx }] },
-        { limit, sort: { isFeatured: -1 }, projection: { name: 1, slug: 1, provider: 1, amountMax: 1 } },
-    );
+    const rows = await scholarshipAutocomplete(term, limit);
     return rows.map((s) => ({
         type: 'scholarship' as const,
         id: String(s._id),
@@ -259,8 +258,7 @@ export async function logSearchQuery(input: {
     scope?: string;
 }): Promise<void> {
     try {
-        await connectToDatabase();
-        await SearchQuery.create({
+        await createSearchQuery({
             term: input.term.slice(0, 200),
             normalizedTerm: input.term.trim().toLowerCase().slice(0, 200),
             resultCount: input.resultCount,
@@ -276,17 +274,33 @@ export async function logSearchQuery(input: {
     }
 }
 
+export interface SearchInsights {
+    topTerms: { _id: string; count: number; zero: number }[];
+    zeroTerms: { _id: string; count: number }[];
+    recent: SearchQueryDoc[];
+    synonyms: SearchSynonymDoc[];
+}
+
+/**
+ * Everything the admin search screen needs in one call. Synonyms are read
+ * unfiltered (not just active ones) so drafted rules stay visible to admins.
+ */
+export async function getSearchInsights(): Promise<SearchInsights> {
+    const [topTerms, zeroTerms, recent, synonyms] = await Promise.all([
+        getTopSearchTerms(30, 15),
+        getZeroResultTerms(30, 15),
+        listRecentSearchQueries(20),
+        listAllSynonyms(50),
+    ]);
+
+    return { topTerms, zeroTerms, recent: toPlain(recent), synonyms: toPlain(synonyms) };
+}
+
 /** Trending searches for the empty state of the search box. */
 export async function getTrendingSearches(limit = 6): Promise<string[]> {
     try {
-        await connectToDatabase();
         const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);
-        const rows = await SearchQuery.aggregate<{ _id: string; count: number }>([
-            { $match: { createdAt: { $gte: since }, zeroResults: false } },
-            { $group: { _id: '$normalizedTerm', count: { $sum: 1 } } },
-            { $sort: { count: -1 } },
-            { $limit: limit },
-        ]).exec();
+        const rows = await listTrendingSearchTerms(since, limit);
         return rows.map((r) => r._id).filter(Boolean);
     } catch {
         return [];

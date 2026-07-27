@@ -80,3 +80,10 @@ export const verifyOtpSchema = z.object({
     phone: phoneSchema,
     code: z.string().regex(/^\d{4,6}$/, 'Enter the 6-digit code'),
 });
+
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
+export type NotificationPreferencesInput = z.infer<typeof notificationPreferencesSchema>;
+export type RequestOtpInput = z.infer<typeof requestOtpSchema>;
+export type VerifyOtpInput = z.infer<typeof verifyOtpSchema>;

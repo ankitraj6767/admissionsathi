@@ -1,9 +1,17 @@
 import 'server-only';
-import { connectToDatabase } from '@/db/connect';
-import { Comparison } from '@/db/models/system.model';
-import { College, CollegeCourse, type CollegeDoc } from '@/db/models/college.model';
-import { getCollegesBySlugs } from '@/db/repositories/college.repository';
-import { findLean, toPlain } from '@/db/repositories/base.repository';
+import type { CollegeDoc } from '@/db/models/college.model';
+import {
+    countActiveCollegeCourses,
+    getCollegesBySlugs,
+    incrementCollegeCompareCounts,
+    listCollegeIdsBySlugs,
+} from '@/db/repositories/college.repository';
+import {
+    findComparisonByShareId,
+    incrementComparisonViews,
+    upsertComparison,
+} from '@/db/repositories/system.repository';
+import { toPlain } from '@/db/repositories/base.repository';
 import { siteConfig } from '@/config/site';
 import { formatCompactINR } from '@/lib/utils';
 
@@ -45,11 +53,7 @@ export async function buildComparison(slugs: string[]): Promise<ComparisonPayloa
     }
 
     const courseCounts = await Promise.all(
-        ordered.map((college) =>
-            findLean(CollegeCourse, { college: college._id, status: 'active' }, { limit: 200 }).then(
-                (rows) => rows.length,
-            ),
-        ),
+        ordered.map((college) => countActiveCollegeCourses(college._id, 200)),
     );
 
     const rows: ComparisonRow[] = [
@@ -210,35 +214,26 @@ export async function saveComparison(input: {
     anonymousId?: string;
     title?: string;
 }): Promise<string> {
-    await connectToDatabase();
     const shareId = Math.random().toString(36).slice(2, 10);
-    const colleges = await College.find({ slug: { $in: input.slugs } })
-        .select('_id')
-        .lean()
-        .exec();
+    const collegeIds = await listCollegeIdsBySlugs(input.slugs);
 
-    await Comparison.create({
+    await upsertComparison({
         shareId,
         user: input.userId,
         anonymousId: input.anonymousId,
-        colleges: colleges.map((c) => c._id),
+        colleges: collegeIds,
         collegeSlugs: input.slugs,
         title: input.title,
     });
 
-    await College.updateMany({ slug: { $in: input.slugs } }, { $inc: { compareCount: 1 } }).exec();
+    await incrementCollegeCompareCounts(input.slugs);
 
     return shareId;
 }
 
+/** Reads a shared comparison and counts the view (the returned count includes it). */
 export async function getComparisonByShareId(shareId: string) {
-    await connectToDatabase();
-    const comparison = await Comparison.findOneAndUpdate(
-        { shareId },
-        { $inc: { viewCount: 1 } },
-        { new: true },
-    )
-        .lean()
-        .exec();
+    await incrementComparisonViews(shareId);
+    const comparison = await findComparisonByShareId(shareId);
     return comparison ? toPlain(comparison) : null;
 }

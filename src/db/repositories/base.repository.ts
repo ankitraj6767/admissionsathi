@@ -4,7 +4,34 @@ import type { FilterQuery, Model, PipelineStage, PopulateOptions, ProjectionType
 export type PopulateArg = PopulateOptions | (string | PopulateOptions)[];
 import { connectToDatabase } from '@/db/connect';
 import { siteConfig } from '@/config/site';
+import { envPlaceholderIssues } from '@/lib/env';
 import type { Paginated } from '@/types/common';
+
+/**
+ * Opens the shared connection for a read.
+ *
+ * Returns `false` when the process is compiling with placeholder credentials
+ * (`next build` on a machine or CI runner without database access). Reads then
+ * resolve to empty results so pre-rendering can finish, while every runtime read
+ * still connects normally and surfaces real failures to the error boundaries.
+ */
+async function connectForRead(): Promise<boolean> {
+    if (envPlaceholderIssues().length > 0) return false;
+    await connectToDatabase();
+    return true;
+}
+
+function emptyPage<T>(page: number, pageSize: number): Paginated<T> {
+    return {
+        items: [],
+        page,
+        pageSize,
+        total: 0,
+        totalPages: 1,
+        hasNext: false,
+        hasPrev: false,
+    };
+}
 
 export interface PaginateArgs<T> {
     filter?: FilterQuery<T>;
@@ -24,13 +51,21 @@ export async function paginate<T>(
     model: Model<T>,
     args: PaginateArgs<T> = {},
 ): Promise<Paginated<T>> {
-    await connectToDatabase();
+    // `Math.floor(NaN)` is NaN, which would reach `.skip()` and throw, so a
+    // non-numeric page or size falls back to the default rather than propagating.
+    const asPositiveInt = (value: number | undefined, fallback: number): number => {
+        const floored = Math.floor(Number(value));
+        return Number.isFinite(floored) ? Math.max(1, floored) : fallback;
+    };
 
-    const page = Math.max(1, Math.floor(args.page ?? 1));
+    const page = asPositiveInt(args.page, 1);
     const pageSize = Math.min(
         siteConfig.pagination.maxLimit,
-        Math.max(1, Math.floor(args.pageSize ?? siteConfig.pagination.listing)),
+        asPositiveInt(args.pageSize, siteConfig.pagination.listing),
     );
+
+    if (!(await connectForRead())) return emptyPage<T>(page, pageSize);
+
     const filter = (args.filter ?? {}) as FilterQuery<T>;
 
     const query = model
@@ -72,7 +107,7 @@ export async function findLean<T>(
         populate?: PopulateArg;
     } = {},
 ): Promise<T[]> {
-    await connectToDatabase();
+    if (!(await connectForRead())) return [];
     const query = model
         .find(filter, options.projection)
         .sort(options.sort ?? { displayOrder: 1 })
@@ -87,23 +122,74 @@ export async function findOneLean<T>(
     filter: FilterQuery<T>,
     options: { projection?: ProjectionType<T>; populate?: PopulateArg } = {},
 ): Promise<T | null> {
-    await connectToDatabase();
+    if (!(await connectForRead())) return null;
     const query = model.findOne(filter, options.projection).lean<T>();
     if (options.populate) query.populate(options.populate);
     return (await query.exec()) as T | null;
 }
 
 export async function countDocs<T>(model: Model<T>, filter: FilterQuery<T> = {}): Promise<number> {
-    await connectToDatabase();
+    if (!(await connectForRead())) return 0;
     return model.countDocuments(filter).exec();
 }
 
+/**
+ * The only part of a Mongoose model aggregation needs.
+ *
+ * Declared structurally rather than as `Model<unknown>` so a concretely typed
+ * model (`Model<LeadDoc>`) can be passed without the caller having to restate
+ * the document type just to name the aggregation's result type.
+ */
+interface Aggregatable {
+    aggregate<TResult>(pipeline: PipelineStage[]): { exec(): Promise<TResult[]> };
+}
+
 export async function aggregateLean<TResult = Record<string, unknown>>(
-    model: Model<unknown>,
+    model: Aggregatable,
     pipeline: PipelineStage[],
 ): Promise<TResult[]> {
-    await connectToDatabase();
+    if (!(await connectForRead())) return [];
     return model.aggregate<TResult>(pipeline).exec();
+}
+
+/** A slug-addressable row as the sitemap needs it. */
+export interface SlugRow {
+    slug: string;
+    updatedAt?: Date;
+}
+
+/**
+ * Slug + `updatedAt` rows for one sitemap shard.
+ *
+ * Sitemap shards read far more rows than a page listing, so the limit is passed
+ * explicitly instead of using `findLean`'s 500-row ceiling. Rows without a slug
+ * are dropped because they can never be linked.
+ */
+export async function listSlugRows<T>(
+    model: Model<T>,
+    filter: FilterQuery<T>,
+    options: { limit: number; sort?: Record<string, 1 | -1> },
+): Promise<SlugRow[]> {
+    if (!(await connectForRead())) return [];
+    const rows = await model
+        .find(filter)
+        .select({ slug: 1, updatedAt: 1 })
+        .sort(options.sort ?? { updatedAt: -1 })
+        .limit(options.limit)
+        .lean<SlugRow[]>()
+        .exec();
+    return rows.filter((row) => Boolean(row?.slug));
+}
+
+/** Distinct values for a field, used by filter facets. */
+export async function distinctLean<T, TValue = string>(
+    model: Model<T>,
+    field: string,
+    filter: FilterQuery<T> = {},
+): Promise<TValue[]> {
+    if (!(await connectForRead())) return [];
+    const values = await model.distinct(field, filter).exec();
+    return (values as TValue[]).filter((value) => value !== null && value !== undefined);
 }
 
 /** Serialises Mongo documents (ObjectId/Date) into RSC-safe plain JSON. */

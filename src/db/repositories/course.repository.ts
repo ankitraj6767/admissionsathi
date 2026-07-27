@@ -8,11 +8,33 @@ import {
     type CourseDoc,
     type SpecializationDoc,
 } from '@/db/models/course.model';
+import { connectToDatabase } from '@/db/connect';
 import { escapeRegex } from '@/lib/utils';
-import { countDocs, findLean, findOneLean, paginate } from './base.repository';
+import {
+    countDocs,
+    findLean,
+    findOneLean,
+    listSlugRows,
+    paginate,
+    type SlugRow,
+} from './base.repository';
 import type { Paginated } from '@/types/common';
 
 const PUBLISHED = { status: 'published' as const };
+
+/** Published, indexable and not soft-deleted — what the sitemap may advertise. */
+const SITEMAP_FILTER = {
+    status: 'published',
+    isDeleted: { $ne: true },
+    'seo.noIndex': { $ne: true },
+} as const;
+
+/** Same rule for collections that use the `active` status enum. */
+const ACTIVE_SITEMAP_FILTER = {
+    status: 'active',
+    isDeleted: { $ne: true },
+    'seo.noIndex': { $ne: true },
+} as const;
 
 export const COURSE_CARD_PROJECTION = {
     name: 1,
@@ -163,6 +185,62 @@ export async function listRelatedCourses(
 
 export async function countPublishedCourses(): Promise<number> {
     return countDocs(Course, PUBLISHED);
+}
+
+/** Indexable course slugs for the sitemap, most recently updated first. */
+export async function listCourseSitemapSlugs(limit: number): Promise<SlugRow[]> {
+    return listSlugRows<CourseDoc>(Course, SITEMAP_FILTER as FilterQuery<CourseDoc>, { limit });
+}
+
+/** Indexable course category slugs for the sitemap. */
+export async function listCourseCategorySitemapSlugs(limit: number): Promise<SlugRow[]> {
+    return listSlugRows<CourseCategoryDoc>(
+        CourseCategory,
+        ACTIVE_SITEMAP_FILTER as FilterQuery<CourseCategoryDoc>,
+        { limit },
+    );
+}
+
+/**
+ * Slugs for a known set of course ids, in natural collection order.
+ * The sitemap uses it to publish `/colleges/course/[slug]` only for courses a
+ * college actually offers.
+ */
+export async function listCourseSlugsByIds(ids: unknown[], limit: number): Promise<string[]> {
+    if (ids.length === 0) return [];
+    await connectToDatabase();
+    const rows = (await Course.find({ _id: { $in: ids }, ...SITEMAP_FILTER } as FilterQuery<CourseDoc>)
+        .select({ slug: 1 })
+        .limit(limit)
+        .lean()
+        .exec()) as { slug?: string }[];
+    return rows.map((row) => row.slug).filter((slug): slug is string => Boolean(slug));
+}
+
+/** Best-effort page-view counter. */
+export async function incrementCourseViewCount(id: string): Promise<void> {
+    await connectToDatabase();
+    await Course.updateOne({ _id: id }, { $inc: { viewCount: 1 } }).exec();
+}
+
+/** Resolves a course slug to its id, for filter params that arrive as slugs. */
+export async function findCourseIdBySlug(slug: string): Promise<string | null> {
+    const course = await findOneLean<CourseDoc>(Course, { slug }, { projection: { _id: 1 } });
+    return course ? String(course._id) : null;
+}
+
+/**
+ * Course identity from either a slug or an id — public forms send whichever the
+ * caller had. Casting an invalid id throws, so callers guard the call.
+ */
+export async function findCourseBySlugOrId(
+    value: string,
+): Promise<Pick<CourseDoc, '_id' | 'name'> | null> {
+    return findOneLean<CourseDoc>(
+        Course,
+        { $or: [{ slug: value }, { _id: value }] } as FilterQuery<CourseDoc>,
+        { projection: { name: 1 } },
+    );
 }
 
 export async function courseAutocomplete(term: string, limit = 6): Promise<CourseDoc[]> {

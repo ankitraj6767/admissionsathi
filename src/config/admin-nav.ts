@@ -34,7 +34,8 @@ export const ADMIN_NAV: AdminNavGroup[] = [
             { label: 'Exams', href: '/admin/exams', icon: 'FileText', permission: 'exam.read' },
             { label: 'Exam dates', href: '/admin/exam-dates', icon: 'CalendarDays', permission: 'exam.manage' },
             { label: 'Rankings', href: '/admin/rankings', icon: 'Trophy', permission: 'ranking.manage' },
-            { label: 'States & cities', href: '/admin/states', icon: 'Map', permission: 'settings.manage' },
+            { label: 'States', href: '/admin/states', icon: 'Map', permission: 'settings.manage' },
+            { label: 'Cities', href: '/admin/cities', icon: 'MapPin', permission: 'settings.manage' },
         ],
     },
     {
@@ -77,6 +78,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
         items: [
             { label: 'Homepage builder', href: '/admin/homepage', icon: 'Home', permission: 'homepage.manage' },
             { label: 'Navigation menus', href: '/admin/navigation', icon: 'Link2', permission: 'navigation.manage' },
+            { label: 'Pages', href: '/admin/pages', icon: 'FileText', permission: 'page.manage' },
             { label: 'Forms', href: '/admin/forms', icon: 'ClipboardList', permission: 'form.manage' },
             { label: 'Redirects', href: '/admin/redirects', icon: 'Share2', permission: 'redirect.manage' },
             { label: 'SEO', href: '/admin/seo', icon: 'Globe', permission: 'seo.manage' },

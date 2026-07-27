@@ -1,44 +1,38 @@
 import 'server-only';
 import { cache } from 'react';
-import { connectToDatabase } from '@/db/connect';
 import {
-    LoanProduct,
-    LoanProvider,
-    Scholarship,
-    type LoanProductDoc,
-    type LoanProviderDoc,
-    type ScholarshipDoc,
-} from '@/db/models/finance.model';
-import { LoanCalculation } from '@/db/models/system.model';
-import { findLean, findOneLean, paginate, toPlain } from '@/db/repositories/base.repository';
+    createLoanCalculation,
+    findCourseIdBySlug,
+    getLoanProviderBySlug,
+    getScholarshipBySlug,
+    listFeaturedScholarshipRows,
+    listLoanCalculationsForUser,
+    listProductsForProvider,
+    listPublishedLoanProviders,
+    listPublishedScholarships,
+    listRelatedScholarships,
+    listScholarshipsForState,
+    paginateScholarships,
+} from '@/db/repositories/finance.repository';
+import { toPlain } from '@/db/repositories/base.repository';
 import { escapeRegex } from '@/lib/utils';
 import { CACHE_TAGS, CACHE_TTL, cached } from '@/lib/cache';
+import type { ScholarshipDoc } from '@/db/models/finance.model';
 import type { EmiResult } from '@/lib/finance/emi';
 import type { Paginated } from '@/types/common';
 
 /* --------------------------------- loans --------------------------------- */
 
 export const listLoanProviders = cached(
-    async () =>
-        toPlain(
-            await findLean<LoanProviderDoc>(
-                LoanProvider,
-                { status: 'published' },
-                { sort: { isFeatured: -1, displayOrder: 1 }, limit: 40 },
-            ),
-        ),
+    async () => toPlain(await listPublishedLoanProviders(40)),
     ['loan-providers'],
     { tags: [CACHE_TAGS.loanProviders], revalidate: CACHE_TTL.long },
 );
 
 export const getLoanProvider = cache(async (slug: string) => {
-    const provider = await findOneLean<LoanProviderDoc>(LoanProvider, { slug, status: 'published' });
+    const provider = await getLoanProviderBySlug(slug);
     if (!provider) return null;
-    const products = await findLean<LoanProductDoc>(
-        LoanProduct,
-        { provider: provider._id, status: 'active' },
-        { sort: { displayOrder: 1 }, limit: 10 },
-    );
+    const products = await listProductsForProvider(provider._id, 10);
     return toPlain({ provider, products });
 });
 
@@ -54,8 +48,7 @@ export async function saveLoanCalculation(input: {
     result: EmiResult;
     providerId?: string;
 }): Promise<string> {
-    await connectToDatabase();
-    const created = await LoanCalculation.create({
+    return createLoanCalculation({
         user: input.userId,
         anonymousId: input.anonymousId,
         courseFee: input.courseFee,
@@ -69,17 +62,10 @@ export async function saveLoanCalculation(input: {
         totalRepayment: input.result.totalRepayment,
         provider: input.providerId,
     });
-    return String(created._id);
 }
 
 export async function listUserLoanCalculations(userId: string, limit = 20) {
-    await connectToDatabase();
-    const rows = await LoanCalculation.find({ user: userId })
-        .sort({ createdAt: -1 })
-        .limit(limit)
-        .lean()
-        .exec();
-    return toPlain(rows);
+    return toPlain(await listLoanCalculationsForUser(userId, limit));
 }
 
 /* ------------------------------ scholarships ----------------------------- */
@@ -109,20 +95,19 @@ export async function searchScholarships(
     if (params.category) filter.targetCategories = params.category;
     if (params.benefit) filter.benefitType = params.benefit;
     if (params.course) {
-        const { Course } = await import('@/db/models/course.model');
-        const course = await Course.findOne({ slug: params.course }).select('_id').lean().exec();
-        if (course) filter.targetCourses = course._id;
+        const courseId = await findCourseIdBySlug(params.course);
+        if (courseId) filter.targetCourses = courseId;
     }
 
     const sort: Record<string, 1 | -1> =
         params.sort === 'deadline'
             ? { applicationDeadline: 1 }
             : params.sort === 'amount'
-              ? { amountMax: -1 }
-              : { isFeatured: -1, applicationDeadline: 1 };
+                ? { amountMax: -1 }
+                : { isFeatured: -1, applicationDeadline: 1 };
 
     return toPlain(
-        await paginate<ScholarshipDoc>(Scholarship, {
+        await paginateScholarships({
             filter,
             page: Number(params.page) || 1,
             pageSize: 12,
@@ -132,31 +117,38 @@ export async function searchScholarships(
 }
 
 export const getScholarship = cache(async (slug: string) => {
-    const scholarship = await findOneLean<ScholarshipDoc>(Scholarship, { slug, status: 'published' });
+    const scholarship = await getScholarshipBySlug(slug);
     if (!scholarship) return null;
 
-    const related = await findLean<ScholarshipDoc>(
-        Scholarship,
-        {
-            status: 'published',
-            _id: { $ne: scholarship._id },
-            providerType: scholarship.providerType,
-        },
-        { limit: 5, sort: { isFeatured: -1 } },
+    const related = await listRelatedScholarships(
+        scholarship._id,
+        scholarship.providerType,
+        5,
     );
 
     return toPlain({ scholarship, related });
 });
 
 export const listFeaturedScholarships = cached(
-    async () =>
-        toPlain(
-            await findLean<ScholarshipDoc>(
-                Scholarship,
-                { status: 'published', isFeatured: true },
-                { limit: 8, sort: { applicationDeadline: 1 } },
-            ),
-        ),
+    async () => toPlain(await listFeaturedScholarshipRows(8)),
     ['featured-scholarships'],
     { tags: [CACHE_TAGS.scholarships], revalidate: CACHE_TTL.long },
 );
+
+/**
+ * Scholarships to surface on a college page.
+ *
+ * Prefers schemes targeting the college's state (plus nationwide ones, which
+ * have an empty `targetStates`), and falls back to the general published list so
+ * the section is never empty for a college in an untargeted state.
+ */
+export async function listScholarshipsForCollege(
+    stateId?: string,
+    limit = 8,
+): Promise<ScholarshipDoc[]> {
+    if (stateId) {
+        const scoped = await listScholarshipsForState(stateId, limit);
+        if (scoped.length > 0) return toPlain(scoped);
+    }
+    return toPlain(await listPublishedScholarships(limit));
+}
