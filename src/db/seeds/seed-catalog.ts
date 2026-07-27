@@ -8,6 +8,7 @@ import { College, CollegeCourse, Ranking } from '@/db/models/college.model';
 import { CATEGORY_SEEDS, COURSE_SEEDS } from './data/course.data';
 import { EXAM_DATE_EVENTS, EXAM_SEEDS, SEED_EXAM_YEAR } from './data/exam.data';
 import { COLLEGE_SEEDS } from './data/college.data';
+import { buildCollegeMedia } from './data/college-media.data';
 import { log, type SeedContext } from './seed-core';
 
 function monthsFromNow(offset: number, day = 12): Date {
@@ -368,6 +369,7 @@ export async function seedColleges(
             .filter(Boolean) as Types.ObjectId[];
 
         const seedHash = hashString(seed.name);
+        const media = buildCollegeMedia(seed, slug, city.name);
 
         const college = await College.findOneAndUpdate(
             { slug },
@@ -375,23 +377,33 @@ export async function seedColleges(
                 $set: {
                     name: seed.name,
                     shortName: seed.shortName,
-                    aliases: [seed.shortName, `${seed.shortName} ${city.name}`],
-                    tagline: `${seed.categorySlugs[0] ? seed.categorySlugs[0].replace('-', ' ') : 'Higher'} education in ${city.name}`,
+                    aliases: [seed.shortName, `${seed.shortName} ${city.name}`, `${seed.name} ${city.name}`],
+                    tagline: media.tagline,
                     description: `${seed.name} is a ${seed.ownership.toLowerCase()} institution in ${city.name}, ${city.stateName}, established in ${seed.establishedYear} and affiliated to ${seed.affiliatedTo}.`,
                     overviewHtml: html([
                         `${seed.name} is located in ${city.name}, ${city.stateName} and has been operating since ${seed.establishedYear}. The institute is approved by ${seed.approvals.join(', ')} and holds ${seed.accreditation.join(', ')}.`,
                         `The campus spans about ${seed.campusSizeAcres} acres with roughly ${seed.totalStudents.toLocaleString('en-IN')} students across programmes.`,
                         `<strong>${DEMO_DATA_NOTICE}</strong>`,
                     ]),
-                    logo: { url: '/brand/college-placeholder.svg', alt: `${seed.shortName} logo placeholder` },
+                    // Logo, banner, gallery, brochure and map all come from the
+                    // media builder so a seeded page looks like a finished page
+                    // instead of a placeholder shell.
+                    logo: media.logo,
+                    banner: media.banner,
+                    gallery: media.gallery,
+                    brochureUrl: media.brochureUrl,
                     state: city.stateId,
                     stateName: city.stateName,
                     city: city.id,
                     cityName: city.name,
-                    address: `${seed.shortName} Campus, ${city.name}, ${city.stateName}`,
+                    address: media.address,
+                    pincode: media.pincode,
+                    location: media.location,
+                    mapEmbedUrl: media.mapEmbedUrl,
                     ownership: seed.ownership,
                     establishedYear: seed.establishedYear,
                     affiliatedTo: seed.affiliatedTo,
+                    universityType: media.universityType,
                     approvals: seed.approvals,
                     accreditation: seed.accreditation,
                     campusSizeAcres: seed.campusSizeAcres,
@@ -401,6 +413,7 @@ export async function seedColleges(
                     categories,
                     courses,
                     examsAccepted: exams,
+                    studyModes: media.studyModes,
                     feeRange: { min: seed.feeMin, max: seed.feeMax, currency: 'INR' },
                     ranking: {
                         nirfOverall: seed.nirfOverall,
@@ -449,16 +462,16 @@ export async function seedColleges(
                     facultyHtml: html([
                         `The institute reports approximately ${Math.round(seed.totalStudents / 18)} faculty members with a student-faculty ratio of about 1:18.`,
                     ]),
-                    contact: {
-                        phone: '+91 91555 55555',
-                        email: `admissions@${slugify(seed.shortName)}.example.org`,
-                        website: 'https://example.org',
-                    },
+                    contact: media.contact,
                     highlights: [
                         { label: 'Established', value: String(seed.establishedYear) },
-                        { label: 'Ownership', value: seed.ownership },
+                        { label: 'Ownership', value: `${seed.ownership} · ${media.universityType}` },
+                        { label: 'Campus size', value: `${seed.campusSizeAcres} acres` },
                         { label: 'Approvals', value: seed.approvals.join(', ') },
                         { label: 'Accreditation', value: seed.accreditation.join(', ') },
+                        { label: 'Students on roll', value: seed.totalStudents.toLocaleString('en-IN') },
+                        { label: 'Hostel', value: seed.hostelAvailable ? 'Available' : 'Not available' },
+                        { label: 'Highest package', value: `₹${(seed.highestPackage / 100000).toFixed(1)} LPA` },
                     ],
                     faqs: [
                         {
@@ -482,7 +495,13 @@ export async function seedColleges(
                         },
                     ],
                     isFeatured: seed.featured ?? false,
+                    isTrending: seed.trending ?? Boolean(seed.featured),
                     isVerified: true,
+                    // Non-zero counters so "most viewed" style sorting and the
+                    // social-proof counts on cards have something to show.
+                    viewCount: 1200 + (seedHash % 8800),
+                    savedCount: 40 + (seedHash % 460),
+                    compareCount: 15 + (seedHash % 240),
                     displayOrder: order,
                     dataSourceNote: DEMO_DATA_NOTICE,
                     status: 'published',
@@ -491,6 +510,7 @@ export async function seedColleges(
                     seo: {
                         title: `${seed.name}, ${city.name} — Courses, Fees, Placements & Admission`,
                         description: `${seed.name} in ${city.name}: courses offered, fee structure, admission process, cut-offs, placements, facilities and student reviews.`,
+                        ogImage: media.banner.url,
                     },
                 },
             },
