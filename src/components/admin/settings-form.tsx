@@ -1,12 +1,13 @@
 'use client';
 
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { useRouter } from 'next/navigation';
 import { Save } from 'lucide-react';
 import { updateSettingsAction } from '@/actions/admin/settings.actions';
 import { Button } from '@/components/ui/button';
 import { Checkbox, Field, Input, Textarea } from '@/components/ui/field';
+import { RichTextEditor } from '@/components/admin/rich-text-editor';
 import { cn } from '@/lib/utils';
 
 export interface SettingRow {
@@ -58,6 +59,7 @@ export function SettingsForm({ settings }: { settings: SettingRow[] }) {
 
     const {
         register,
+        control,
         handleSubmit,
         formState: { isSubmitting },
     } = useForm<Record<string, unknown>>({ defaultValues: defaults });
@@ -146,11 +148,27 @@ export function SettingsForm({ settings }: { settings: SettingRow[] }) {
                                         hint={setting.description ?? setting.key}
                                         className={cn(isLong && 'sm:col-span-2')}
                                     >
-                                        {isLong ? (
+                                        {setting.valueType === 'richtext' ? (
+                                            <Controller
+                                                name={fieldName}
+                                                control={control}
+                                                render={({ field }) => (
+                                                    <RichTextEditor
+                                                        id={id}
+                                                        rows={5}
+                                                        label={setting.label}
+                                                        value={typeof field.value === 'string' ? field.value : ''}
+                                                        onChange={field.onChange}
+                                                        onBlur={field.onBlur}
+                                                        aria-describedby={`${id}-hint`}
+                                                    />
+                                                )}
+                                            />
+                                        ) : isLong ? (
                                             <Textarea
                                                 id={id}
-                                                rows={setting.valueType === 'json' ? 6 : 4}
-                                                className={setting.valueType === 'json' ? 'font-mono text-[12px]' : undefined}
+                                                rows={6}
+                                                className="font-mono text-[12px]"
                                                 {...register(fieldName)}
                                             />
                                         ) : (

@@ -9,7 +9,12 @@ export function RichText({ html, className }: { html?: string; className?: strin
     return (
         <div
             className={cn('prose-sathi', className)}
-            // Content is authored by staff in the admin CMS and sanitised on write.
+            /**
+             * Safe because every write path runs `sanitizeRichText`
+             * (`src/lib/html/sanitize.ts`) inside the Zod schema, so the stored
+             * value is already reduced to the allow-list this stylesheet covers.
+             * Never pass visitor-submitted HTML here — only CMS fields.
+             */
             dangerouslySetInnerHTML={{ __html: html }}
         />
     );

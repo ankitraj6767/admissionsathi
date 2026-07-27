@@ -81,6 +81,56 @@ Client Component  ──imports──►  src/services/*.service.ts      ❌ bui
 
 Client Components receive data as props from a Server Component, or call a Server Action / Route Handler.
 
+## Admin rich text and HTML sanitisation
+
+Twelve resources carry rich-text fields (course overviews, exam syllabi, college
+admission notes, FAQ answers, CMS pages, email bodies — 27 fields in total). They
+are stored as HTML because the public site renders them through `.prose-sathi`,
+but nobody is expected to author HTML by hand.
+
+```
+Admin types / pastes
+        │
+        ▼
+RichTextEditor ('use client')  ── contentEditable + toolbar
+  └─ lib/html/clean-client.ts  ── paste cleanup via DOMParser (convenience)
+        │  emits HTML
+        ▼
+Server Action ─► buildResourceSchema ─► z.preprocess(sanitizeRichText)   ◄── the boundary
+        │                               lib/html/sanitize.ts ('server-only')
+        ▼
+Repository ─► Mongoose ─► MongoDB
+        │
+        ▼
+RichText / FaqList ── dangerouslySetInnerHTML, safe because of the step above
+```
+
+The two cleanup layers are not redundant, and it matters which one is trusted:
+
+- **`clean-client.ts` is a convenience.** Its job is that pasting from Word or
+  Google Docs produces usable content instead of a wall of `<span style>` and
+  `class="MsoNormal"`. It is not a security control — a request can be crafted
+  that never touches the browser.
+- **`sanitize.ts` is the boundary.** It runs inside the Zod schema on every write,
+  so it applies to any caller. It is `server-only` and backed by `sanitize-html`
+  rather than hand-rolled regex, because regex-based HTML filtering is a well
+  known source of bypasses. This is what makes `dangerouslySetInnerHTML` on the
+  public site defensible.
+
+Both share one allow-list in `lib/html/policy.ts`, which is dependency-free and
+free of `server-only` precisely so the client can import it — otherwise the editor
+would permit formatting the server then silently discards.
+
+Two policies exist. `web` is the default and mirrors what `.prose-sathi` styles,
+so content cannot render unstyled. `email` additionally allows layout `div`s and a
+narrow set of inline style declarations, because email clients strip stylesheets
+and classes — sanitising a template with the web policy would destroy its
+formatting. A field opts in with `htmlPolicy: 'email'` in `admin-resources.ts`.
+
+Sanitisation applies to writes. Rows created before it existed (seed data, and
+anything authored earlier) were never filtered, so treat a one-time re-save or a
+backfill as outstanding if that history matters.
+
 ## Server Actions vs Route Handlers
 
 Server Actions are the default for mutations. Route Handlers are used only when a Server Action cannot do the job. The complete list under `src/app/api`:

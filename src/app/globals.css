@@ -358,6 +358,64 @@
   margin-bottom: 1rem;
 }
 
+/*
+ * The remaining tags the rich-text allow-list permits. Without these an editor
+ * could insert a heading or code block that renders unstyled on the public site,
+ * which is the same class of bug the allow-list exists to prevent.
+ */
+.prose-sathi h4 {
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 1.2rem 0 0.5rem;
+}
+
+.prose-sathi strong,
+.prose-sathi th {
+  font-weight: 700;
+}
+
+.prose-sathi hr {
+  border: 0;
+  border-top: 1px solid var(--color-line);
+  margin: 1.5rem 0;
+}
+
+.prose-sathi code {
+  background: var(--color-muted);
+  border-radius: 5px;
+  padding: 0.1em 0.35em;
+  font-size: 0.9em;
+}
+
+.prose-sathi pre {
+  background: var(--color-navy-800);
+  color: rgb(255 255 255 / 0.9);
+  border-radius: 10px;
+  padding: 12px 14px;
+  overflow-x: auto;
+  margin-bottom: 1rem;
+  font-size: 0.8rem;
+}
+
+.prose-sathi pre code {
+  background: transparent;
+  padding: 0;
+}
+
+/*
+ * Admin rich-text editor body.
+ * Reuses `.prose-sathi` so the editor is a true preview of the published page;
+ * these rules only undo the leading margin that would otherwise leave the first
+ * line floating away from the top of the input.
+ */
+.prose-sathi > :first-child {
+  margin-top: 0;
+}
+
+.prose-sathi > :last-child {
+  margin-bottom: 0;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;

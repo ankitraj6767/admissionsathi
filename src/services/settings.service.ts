@@ -7,6 +7,7 @@ import {
 } from '@/db/repositories/settings.repository';
 import { SETTING_DEFAULTS } from '@/config/settings-schema';
 import { readSubmittedSettingValue } from '@/lib/settings-payload';
+import { sanitizeRichText } from '@/lib/html/sanitize';
 import { CACHE_TAGS, CACHE_TTL, cached } from '@/lib/cache';
 import { logger } from '@/lib/logger';
 
@@ -105,6 +106,10 @@ export async function saveSettings(
             } catch {
                 return { ok: false, code: 'INVALID_JSON', key, label: definition.label };
             }
+        } else if (definition.valueType === 'richtext') {
+            // Public settings are rendered as HTML (the footer summary), so the
+            // same allow-list that guards resource content has to apply here.
+            value = sanitizeRichText(raw) ?? '';
         } else value = typeof raw === 'string' ? raw : String(raw ?? '');
 
         previous[key] = definition.value;
