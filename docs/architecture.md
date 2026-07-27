@@ -131,6 +131,51 @@ Sanitisation applies to writes. Rows created before it existed (seed data, and
 anything authored earlier) were never filtered, so treat a one-time re-save or a
 backfill as outstanding if that history matters.
 
+## Images and video
+
+Every model already carried image fields (`logo`, `banner`, `gallery`,
+`featuredImage`, `heroImage`, `thumbnail`, `photo`), but none of them were exposed
+in the admin console, so the only way to populate one was to edit MongoDB by hand.
+Three field types close that, and they are wired by *type* rather than per screen:
+
+| Field type | Stored as | Editor |
+| --- | --- | --- |
+| `image` | `ImageRef` — `{ url, alt, width, height, mediaId }` | Library picker + upload, with an alt-text input |
+| `gallery` | `GalleryItem[]` | Ordered list of images and videos, with captions and reordering |
+| `video` | Provider embed URL (string) | URL field with a live thumbnail preview |
+
+```
+MediaPicker ──► GET  /api/admin/media    (browse, search, paginate)
+            └─► POST /api/admin/upload   (validate MIME/size, store, record MediaAsset)
+                        │
+Server Action ──► fieldSchema('image' | 'gallery' | 'video')   ◄── the boundary
+                        │  re-derives every video embed URL
+Repository ──► MongoDB ──► GalleryView (grid + lightbox)
+```
+
+**Videos are referenced, never uploaded.** `validateUpload` rejects video MIME
+types deliberately: the image ceiling is 5 MB, and self-hosting video would mean
+no adaptive bitrate, no poster frames and a large egress bill. `lib/media/video.ts`
+parses YouTube, Vimeo and direct-file URLs into an embed URL plus a poster frame.
+It is dependency-free and has no `server-only` marker, so the admin editor
+validates a pasted URL in the browser using exactly the rules the server applies.
+
+**A video's `embedUrl` is always recomputed server-side.** The browser sends one,
+but trusting it would let a crafted request choose what origin a public page loads
+in an `iframe`. YouTube embeds use `youtube-nocookie.com` so no tracking cookie is
+set before playback.
+
+**`GalleryItem` is a strict superset of `ImageRef`.** That is what makes adding
+video non-breaking: rows written as `{ url, alt }` stay valid and read back as
+images because `kind` defaults to `image`. The public page also falls back to
+array position when `displayOrder` is absent, so a pre-existing gallery keeps its
+original order.
+
+**Adding a media host means editing the CSP.** `frame-src` and `img-src` in
+`next.config.ts` are allow-lists, and a missing host shows up only as a blank
+iframe or broken image in production. `tests/unit/config/csp.test.ts` pins the
+hosts each feature needs so that failure mode becomes a failing test instead.
+
 ## Server Actions vs Route Handlers
 
 Server Actions are the default for mutations. Route Handlers are used only when a Server Action cannot do the job. The complete list under `src/app/api`:

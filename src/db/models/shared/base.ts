@@ -50,6 +50,46 @@ export const imageSchema = new Schema<ImageRef>(
     { _id: false },
 );
 
+/**
+ * Sub-document: one gallery tile, either an image or an embedded video.
+ *
+ * A strict superset of `ImageRef`, which is what makes this a non-breaking
+ * change: rows already stored as `{ url, alt }` stay valid and simply read back
+ * as images because `kind` defaults to `image`.
+ *
+ * Videos are referenced, never uploaded — see `lib/media/video.ts` for why.
+ * `embedUrl` and `thumbnailUrl` are derived on write so the public page never has
+ * to parse a provider URL at render time.
+ */
+export interface GalleryItem extends ImageRef {
+    kind: 'image' | 'video';
+    caption?: string;
+    videoProvider?: 'youtube' | 'vimeo' | 'file';
+    /** Ready-to-embed URL for videos. */
+    embedUrl?: string;
+    /** Poster frame for videos, or a custom thumbnail. */
+    thumbnailUrl?: string;
+    displayOrder: number;
+}
+
+export const galleryItemSchema = new Schema<GalleryItem>(
+    {
+        kind: { type: String, enum: ['image', 'video'], default: 'image' },
+        url: { type: String, required: true, trim: true },
+        alt: { type: String, trim: true, maxlength: 300 },
+        caption: { type: String, trim: true, maxlength: 300 },
+        mediaId: { type: Schema.Types.ObjectId, ref: 'MediaAsset' },
+        width: Number,
+        height: Number,
+        blurDataUrl: String,
+        videoProvider: { type: String, enum: ['youtube', 'vimeo', 'file'] },
+        embedUrl: { type: String, trim: true },
+        thumbnailUrl: { type: String, trim: true },
+        displayOrder: { type: Number, default: 0 },
+    },
+    { _id: false },
+);
+
 /** Sub-document: FAQ entry embedded in course/college/exam pages. */
 export interface FaqItem {
     question: string;

@@ -91,13 +91,35 @@ export async function createAdminDoc(
     return created.toObject() as AdminDoc;
 }
 
+/**
+ * Writes a partial update, translating cleared fields into `$unset`.
+ *
+ * Mongoose strips `undefined` values out of `$set`, so emptying an optional field
+ * used to be a silent no-op: the form reported success and the old value came
+ * back on reload. Splitting the payload is what makes "clear this field" work for
+ * every field type, not just the ones with a falsy-but-defined empty value.
+ */
 export async function setAdminDocValues(
     model: Model<AdminDoc>,
     id: string,
     values: AdminDoc,
 ): Promise<void> {
     await connectToDatabase();
-    await model.updateOne({ _id: id }, { $set: values }).exec();
+
+    const $set: AdminDoc = {};
+    const $unset: Record<string, ''> = {};
+
+    for (const [key, value] of Object.entries(values)) {
+        if (value === undefined) $unset[key] = '';
+        else $set[key] = value;
+    }
+
+    const update: Record<string, unknown> = {};
+    if (Object.keys($set).length > 0) update.$set = $set;
+    if (Object.keys($unset).length > 0) update.$unset = $unset;
+    if (Object.keys(update).length === 0) return;
+
+    await model.updateOne({ _id: id }, update).exec();
 }
 
 /** Records the previous slug so already-published URLs keep resolving. */

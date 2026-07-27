@@ -35,7 +35,12 @@ export type AdminFieldType =
     | 'reference'
     | 'tags'
     | 'json'
-    | 'image';
+    /** Single image, stored as `ImageRef` (`{ url, alt, width, height, mediaId }`). */
+    | 'image'
+    /** Ordered list of images and embedded videos, stored as `GalleryItem[]`. */
+    | 'gallery'
+    /** A single embedded video URL, normalised to a provider embed on write. */
+    | 'video';
 
 export interface AdminField {
     name: string;
@@ -61,6 +66,8 @@ export interface AdminField {
      * layout tables must survive, because email clients ignore stylesheets.
      */
     htmlPolicy?: HtmlPolicy;
+    /** Preview shape for an `image` field. Logos read better square. */
+    imageAspect?: 'square' | 'wide' | 'video';
 }
 
 export interface AdminColumn {
@@ -185,6 +192,24 @@ export const ADMIN_RESOURCES: Record<string, AdminResource> = {
             { name: 'contact.email', label: 'Email', type: 'text', group: 'Contact' },
             { name: 'contact.website', label: 'Website', type: 'text', group: 'Contact', colSpan: 2 },
             { name: 'brochureUrl', label: 'Brochure URL', type: 'text', group: 'Contact', colSpan: 2 },
+            { name: 'logo', label: 'Logo', type: 'image', imageAspect: 'square', group: 'Media' },
+            { name: 'banner', label: 'Hero banner', type: 'image', imageAspect: 'wide', group: 'Media' },
+            {
+                name: 'gallery',
+                label: 'Campus gallery',
+                type: 'gallery',
+                group: 'Media',
+                colSpan: 2,
+                help: 'Photos and videos shown on the college Gallery tab. The first item becomes the cover.',
+            },
+            {
+                name: 'videoUrl',
+                label: 'Campus tour video',
+                type: 'video',
+                group: 'Media',
+                colSpan: 2,
+                help: 'Featured above the gallery grid. Videos added to the gallery itself appear inline.',
+            },
             { name: 'isFeatured', label: 'Featured', type: 'boolean', group: 'Publishing' },
             { name: 'isVerified', label: 'Verified', type: 'boolean', group: 'Publishing' },
             { name: 'displayOrder', label: 'Display order', type: 'number', group: 'Publishing' },
@@ -243,6 +268,7 @@ export const ADMIN_RESOURCES: Record<string, AdminResource> = {
             { name: 'jobRoles', label: 'Job roles', type: 'tags', group: 'Career', colSpan: 2 },
             { name: 'skills', label: 'Skills', type: 'tags', group: 'Career', colSpan: 2 },
             { name: 'topRecruiters', label: 'Top recruiters', type: 'tags', group: 'Career', colSpan: 2 },
+            { name: 'heroImage', label: 'Hero image', type: 'image', imageAspect: 'wide', group: 'Media', colSpan: 2 },
             { name: 'isFeatured', label: 'Featured', type: 'boolean', group: 'Publishing' },
             { name: 'displayOrder', label: 'Display order', type: 'number', group: 'Publishing' },
             statusField,
@@ -367,6 +393,7 @@ export const ADMIN_RESOURCES: Record<string, AdminResource> = {
             { name: 'mode', label: 'Mode', type: 'multiselect', options: EXAM_MODES, group: 'Basics' },
             { name: 'examYear', label: 'Exam year', type: 'number', required: true, min: 2000, max: 2100, group: 'Basics' },
             { name: 'officialWebsite', label: 'Official website', type: 'text', group: 'Basics', colSpan: 2 },
+            { name: 'logo', label: 'Exam logo', type: 'image', imageAspect: 'square', group: 'Media' },
             { name: 'applicationFee.general', label: 'Fee — General (₹)', type: 'number', group: 'Fees' },
             { name: 'applicationFee.reserved', label: 'Fee — Reserved (₹)', type: 'number', group: 'Fees' },
             { name: 'registrationStart', label: 'Registration starts', type: 'date', group: 'Dates' },
@@ -540,6 +567,7 @@ export const ADMIN_RESOURCES: Record<string, AdminResource> = {
             { name: 'coversAbroad', label: 'Covers study abroad', type: 'boolean', group: 'Terms' },
             { name: 'documentsRequired', label: 'Documents required', type: 'tags', group: 'Terms', colSpan: 2 },
             { name: 'applyUrl', label: 'Apply URL', type: 'text', group: 'Terms', colSpan: 2 },
+            { name: 'logo', label: 'Lender logo', type: 'image', imageAspect: 'square', group: 'Media' },
             { name: 'isFeatured', label: 'Featured', type: 'boolean', group: 'Publishing' },
             { name: 'displayOrder', label: 'Display order', type: 'number', group: 'Publishing' },
             statusField,
@@ -659,6 +687,7 @@ export const ADMIN_RESOURCES: Record<string, AdminResource> = {
             { name: 'applicationStart', label: 'Application starts', type: 'date', group: 'Dates' },
             { name: 'applicationDeadline', label: 'Deadline', type: 'date', group: 'Dates' },
             { name: 'applicationUrl', label: 'Application URL', type: 'text', group: 'Dates', colSpan: 2 },
+            { name: 'logo', label: 'Provider logo', type: 'image', imageAspect: 'square', group: 'Media' },
             { name: 'isFeatured', label: 'Featured', type: 'boolean', group: 'Publishing' },
             statusField,
             ...seoFields,
@@ -701,6 +730,7 @@ export const ADMIN_RESOURCES: Record<string, AdminResource> = {
             { name: 'phone', label: 'Phone', type: 'text', group: 'Basics' },
             { name: 'bio', label: 'Bio', type: 'textarea', group: 'Basics', colSpan: 2 },
             { name: 'languages', label: 'Languages', type: 'tags', group: 'Expertise' },
+            { name: 'photo', label: 'Photo', type: 'image', imageAspect: 'square', group: 'Media' },
             { name: 'specializations', label: 'Specialisations', type: 'tags', group: 'Expertise' },
             { name: 'qualifications', label: 'Qualifications', type: 'tags', group: 'Expertise' },
             { name: 'experienceYears', label: 'Experience (years)', type: 'number', group: 'Expertise' },
@@ -754,8 +784,15 @@ export const ADMIN_RESOURCES: Record<string, AdminResource> = {
             { name: 'contentHtml', label: 'Content', type: 'richtext', required: true, group: 'Content', colSpan: 2 },
             { name: 'authorName', label: 'Author name', type: 'text', group: 'Attribution' },
             { name: 'readingTimeMinutes', label: 'Reading time (min)', type: 'number', group: 'Attribution' },
-            { name: 'featuredImage.url', label: 'Featured image URL', type: 'text', group: 'Media', colSpan: 2 },
-            { name: 'featuredImage.alt', label: 'Featured image alt text', type: 'text', group: 'Media', colSpan: 2 },
+            {
+                name: 'featuredImage',
+                label: 'Featured image',
+                type: 'image',
+                imageAspect: 'video',
+                group: 'Media',
+                colSpan: 2,
+                help: 'Used as the article card thumbnail and the Open Graph share image.',
+            },
             { name: 'isFeatured', label: 'Featured', type: 'boolean', group: 'Publishing' },
             { name: 'isTrending', label: 'Trending', type: 'boolean', group: 'Publishing' },
             { name: 'publishedAt', label: 'Publish date', type: 'datetime', group: 'Publishing' },
@@ -857,6 +894,8 @@ export const ADMIN_RESOURCES: Record<string, AdminResource> = {
             { name: 'description', label: 'Description', type: 'textarea', group: 'Content', colSpan: 2 },
             { name: 'contentHtml', label: 'Content', type: 'richtext', group: 'Content', colSpan: 2 },
             { name: 'fileUrl', label: 'File URL', type: 'text', group: 'Files', colSpan: 2 },
+            { name: 'thumbnail', label: 'Thumbnail', type: 'image', imageAspect: 'video', group: 'Media' },
+            { name: 'videoUrl', label: 'Video', type: 'video', group: 'Media', colSpan: 2 },
             { name: 'fileSizeKb', label: 'File size (KB)', type: 'number', group: 'Files' },
             { name: 'externalUrl', label: 'External URL', type: 'text', group: 'Files' },
             { name: 'videoUrl', label: 'Video URL', type: 'text', group: 'Files', colSpan: 2 },

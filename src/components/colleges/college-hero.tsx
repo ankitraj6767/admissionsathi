@@ -11,9 +11,33 @@ import type { CollegeDoc } from '@/db/models/college.model';
 export function CollegeHero({ college }: { college: CollegeDoc }) {
     const base = `/colleges/${college.slug}`;
 
+    const banner = college.banner?.url;
+
     return (
-        <section className="border-b border-navy-900/40 bg-navy-800 text-white">
-            <div className="shell py-6">
+        <section className="relative border-b border-navy-900/40 bg-navy-800 text-white">
+            {/*
+              Banner is decorative: the heading already names the college, so an
+              empty alt keeps it out of the accessibility tree. The navy scrim
+              guarantees the text keeps its contrast ratio over any photo.
+            */}
+            {banner ? (
+                <>
+                    <Image
+                        src={banner}
+                        alt=""
+                        fill
+                        priority
+                        sizes="100vw"
+                        className="object-cover"
+                    />
+                    <span
+                        aria-hidden
+                        className="absolute inset-0 bg-gradient-to-r from-navy-900/95 via-navy-800/90 to-navy-800/75"
+                    />
+                </>
+            ) : null}
+
+            <div className="relative shell py-6">
                 <Breadcrumbs
                     tone="dark"
                     className="mb-4"
