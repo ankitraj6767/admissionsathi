@@ -19,6 +19,7 @@ import { escapeRegex, slugify } from '@/lib/utils';
 import { sanitizeRichText } from '@/lib/html/sanitize';
 import { isSafeUrl } from '@/lib/html/policy';
 import { parseVideoUrl, toEmbedUrl } from '@/lib/media/video';
+import { safeWebUrl } from '@/lib/url';
 import { ConflictError, NotFoundError } from '@/lib/action-helpers';
 import type { AdminField, AdminResource } from '@/config/admin-resources';
 import type { Paginated } from '@/types/common';
@@ -119,6 +120,30 @@ function fieldSchema(field: AdminField): z.ZodTypeAny {
                 .max(40)
                 .optional()
                 .transform((v) => (v && Types.ObjectId.isValid(v) ? v : undefined));
+        case 'url':
+            /**
+             * Normalised as well as validated: an editor typing `example.org`
+             * gets `https://example.org` stored rather than a value that is kept
+             * but never rendered as a link.
+             */
+            return z.preprocess(
+                (v) => {
+                    if (typeof v !== 'string' || v.trim() === '') return undefined;
+                    return safeWebUrl(v) ?? 'INVALID_URL';
+                },
+                field.required
+                    ? z
+                        .string(`${field.label} is required`)
+                        .refine((v) => v !== 'INVALID_URL', 'Enter a full web address, e.g. https://example.org')
+                    : z
+                        .string()
+                        .optional()
+                        .refine(
+                            (v) => v !== 'INVALID_URL',
+                            'Enter a full web address, e.g. https://example.org',
+                        ),
+            );
+
         case 'image':
             /**
              * Matches `ImageRef`. A picked image with no URL is treated as
@@ -218,6 +243,17 @@ export function buildResourceSchema(resource: AdminResource) {
     return z.object(shape).passthrough();
 }
 
+/**
+ * Field types whose schema turns an empty submission into `undefined`, which Zod
+ * then drops from its output — making "cleared" indistinguishable from "absent".
+ *
+ * The generated form always submits every non-readOnly field, so absent means the
+ * editor emptied it. These are written as an unset (see `setAdminDocValues`)
+ * rather than skipped; otherwise removing a logo or a website would report
+ * success and then reappear on reload.
+ */
+const CLEARABLE_TO_UNDEFINED = new Set<AdminField['type']>(['image', 'video', 'url']);
+
 /** Converts dotted keys into a nested `$set` payload Mongoose understands. */
 function toUpdatePayload(
     resource: AdminResource,
@@ -230,15 +266,7 @@ function toUpdatePayload(
         .forEach((field) => {
             const raw = values[field.name];
 
-            /**
-             * `image` and `video` validate to `undefined` when cleared, and Zod
-             * drops the key entirely, so "cleared" and "absent" are
-             * indistinguishable here. The generated form always submits every
-             * non-readOnly field, so absent means removed — written as an unset
-             * (see `setAdminDocValues`) rather than skipped, otherwise removing a
-             * logo would report success and reappear on reload.
-             */
-            if ((field.type === 'image' || field.type === 'video') && raw === undefined) {
+            if (CLEARABLE_TO_UNDEFINED.has(field.type) && raw === undefined) {
                 payload[field.name] = undefined;
                 return;
             }

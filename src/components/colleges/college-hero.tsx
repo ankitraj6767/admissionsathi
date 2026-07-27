@@ -1,8 +1,10 @@
 import Image from 'next/image';
 import Link from 'next/link';
-import { Award, Building2, CalendarDays, Download, MapPin, Users } from 'lucide-react';
+import { Award, Building2, CalendarDays, Download, Globe, MapPin, Users } from 'lucide-react';
 import { Badge, RatingStars } from '@/components/ui/primitives';
 import { Breadcrumbs } from '@/components/shared/page-header';
+import { SafeLink } from '@/components/shared/safe-link';
+import { safeWebUrl } from '@/lib/url';
 import { CollegeCardActions } from './college-card-actions';
 import { CollegeTabs } from './college-tabs';
 import { formatCompactINR } from '@/lib/utils';
@@ -12,6 +14,7 @@ export function CollegeHero({ college }: { college: CollegeDoc }) {
     const base = `/colleges/${college.slug}`;
 
     const banner = college.banner?.url;
+    const websiteHref = safeWebUrl(college.contact?.website);
 
     return (
         <section className="relative border-b border-navy-900/40 bg-navy-800 text-white">
@@ -138,15 +141,33 @@ export function CollegeHero({ college }: { college: CollegeDoc }) {
                             >
                                 Apply / Get guidance
                             </Link>
-                            {college.brochureUrl ? (
-                                <a
-                                    href={college.brochureUrl}
-                                    className="inline-flex h-9 items-center gap-1.5 rounded-[9px] border border-white/25 px-3 text-[12px] font-bold text-white hover:bg-white/10"
-                                    data-analytics="brochure_download"
+                            {/*
+                              Through SafeLink so a brochure URL typed into the
+                              admin cannot become a `javascript:` href, and so the
+                              PDF opens in a new tab with `rel="noopener"` instead
+                              of navigating away from the college page.
+                            */}
+                            <SafeLink
+                                href={college.brochureUrl}
+                                showIcon={false}
+                                className="h-9 rounded-[9px] border border-white/25 px-3 text-[12px] font-bold text-white hover:bg-white/10"
+                                data-analytics="brochure_download"
+                            >
+                                <Download className="h-3.5 w-3.5" aria-hidden />
+                                Brochure
+                                <span className="sr-only">(opens in a new tab)</span>
+                            </SafeLink>
+
+                            {websiteHref ? (
+                                <SafeLink
+                                    href={websiteHref}
+                                    showIcon={false}
+                                    className="h-9 rounded-[9px] border border-white/25 px-3 text-[12px] font-bold text-white hover:bg-white/10"
                                 >
-                                    <Download className="h-3.5 w-3.5" aria-hidden />
-                                    Brochure
-                                </a>
+                                    <Globe className="h-3.5 w-3.5" aria-hidden />
+                                    Official website
+                                    <span className="sr-only">(opens in a new tab)</span>
+                                </SafeLink>
                             ) : null}
                         </div>
 
