@@ -3,11 +3,12 @@
 import { useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import { Controller, useForm } from 'react-hook-form';
 import { CheckCircle2, ExternalLink, Save, Trash2 } from 'lucide-react';
 import { createResourceAction, deleteResourceAction, updateResourceAction } from '@/actions/admin/crud.actions';
 import { Button } from '@/components/ui/button';
 import { Checkbox, Field, Input, Select, Textarea } from '@/components/ui/field';
+import { RichTextEditor } from '@/components/admin/rich-text-editor';
 import { cn, slugify } from '@/lib/utils';
 import type { AdminField, AdminResource } from '@/config/admin-resources';
 
@@ -72,6 +73,7 @@ export function ResourceForm({
 
     const {
         register,
+        control,
         handleSubmit,
         setValue,
         getValues,
@@ -138,19 +140,31 @@ export function ResourceForm({
             );
         }
 
-        const control = (() => {
+        const inputControl = (() => {
             switch (field.type) {
                 case 'textarea':
                     return <Textarea id={id} rows={3} invalid={Boolean(fieldError)} {...register(field.name)} />;
                 case 'richtext':
+                    // Controlled, not `register`, because the editor is a
+                    // contentEditable surface rather than a native input.
                     return (
-                        <Textarea
-                            id={id}
-                            rows={10}
-                            className="font-mono text-[12px]"
-                            placeholder="<p>HTML content…</p>"
-                            invalid={Boolean(fieldError)}
-                            {...register(field.name)}
+                        <Controller
+                            name={field.name}
+                            control={control}
+                            render={({ field: controlled }) => (
+                                <RichTextEditor
+                                    id={id}
+                                    label={field.label}
+                                    value={typeof controlled.value === 'string' ? controlled.value : ''}
+                                    onChange={controlled.onChange}
+                                    onBlur={controlled.onBlur}
+                                    invalid={Boolean(fieldError)}
+                                    placeholder={field.placeholder ?? 'Start typing, or paste from a document…'}
+                                    aria-describedby={
+                                        fieldError ? `${id}-error` : field.help ? `${id}-hint` : undefined
+                                    }
+                                />
+                            )}
                         />
                     );
                 case 'json':
@@ -274,7 +288,7 @@ export function ResourceForm({
                 hint={field.help}
                 className={cn(field.colSpan === 2 && 'sm:col-span-2')}
             >
-                {control}
+                {inputControl}
             </Field>
         );
     };

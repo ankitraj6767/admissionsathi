@@ -16,6 +16,7 @@ import {
 } from '@/db/repositories/admin.repository';
 import { toPlain } from '@/db/repositories/base.repository';
 import { escapeRegex, slugify } from '@/lib/utils';
+import { sanitizeRichText } from '@/lib/html/sanitize';
 import { ConflictError, NotFoundError } from '@/lib/action-helpers';
 import type { AdminField, AdminResource } from '@/config/admin-resources';
 import type { Paginated } from '@/types/common';
@@ -77,6 +78,19 @@ function fieldSchema(field: AdminField): z.ZodTypeAny {
                 .max(140)
                 .regex(/^[a-z0-9][a-z0-9-]*$/, 'Use lowercase letters, numbers and hyphens');
         case 'richtext':
+            /**
+             * Sanitised before validation, not after: the length and required
+             * checks must see what will actually be stored. `sanitizeRichText`
+             * returns `undefined` for content that is visually blank (an editor
+             * that was focused then cleared leaves `<p><br></p>` behind), so a
+             * required field cannot be satisfied by empty markup.
+             */
+            return z.preprocess(
+                (v) => sanitizeRichText(v, field.htmlPolicy ?? 'web') ?? '',
+                field.required
+                    ? z.string().min(1, `${field.label} is required`).max(200_000)
+                    : z.string().max(200_000).optional().or(z.literal('')),
+            );
         case 'textarea':
             return field.required
                 ? z.string().min(1, `${field.label} is required`).max(200_000)

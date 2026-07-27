@@ -33,7 +33,8 @@ export function FaqList({
                     <AccordionContent>
                         <div
                             className="prose-sathi text-[12.5px]"
-                            // Answers are authored by staff in the admin CMS and sanitised on write.
+                            // `answerHtml` is a `richtext` admin field, so it is
+                            // sanitised by `sanitizeRichText` on every write.
                             dangerouslySetInnerHTML={{ __html: faq.answerHtml }}
                         />
                     </AccordionContent>

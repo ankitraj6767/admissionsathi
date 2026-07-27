@@ -19,6 +19,7 @@ import {
 } from './constants';
 import { ROLES } from './permissions';
 import type { Permission } from './permissions';
+import type { HtmlPolicy } from '@/lib/html/policy';
 
 export type AdminFieldType =
     | 'text'
@@ -54,6 +55,12 @@ export interface AdminField {
     /** Hide from the create/edit form (read-only computed fields). */
     readOnly?: boolean;
     colSpan?: 1 | 2;
+    /**
+     * Sanitisation allow-list for `richtext` fields. Defaults to `web`, which
+     * matches the `.prose-sathi` stylesheet. Use `email` where inline styles and
+     * layout tables must survive, because email clients ignore stylesheets.
+     */
+    htmlPolicy?: HtmlPolicy;
 }
 
 export interface AdminColumn {
@@ -1134,7 +1141,16 @@ export const ADMIN_RESOURCES: Record<string, AdminResource> = {
             { name: 'key', label: 'Key', type: 'text', required: true, group: 'Basics' },
             { name: 'name', label: 'Name', type: 'text', required: true, group: 'Basics' },
             { name: 'subject', label: 'Subject', type: 'text', required: true, group: 'Basics', colSpan: 2 },
-            { name: 'bodyHtml', label: 'HTML body', type: 'richtext', required: true, group: 'Content', colSpan: 2 },
+            {
+                name: 'bodyHtml',
+                label: 'Email body',
+                type: 'richtext',
+                required: true,
+                group: 'Content',
+                colSpan: 2,
+                htmlPolicy: 'email',
+                help: 'Use {{variable}} placeholders. Inline styles are preserved because email clients ignore stylesheets.',
+            },
             { name: 'bodyText', label: 'Plain-text body', type: 'textarea', group: 'Content', colSpan: 2 },
             { name: 'availableVariables', label: 'Available variables', type: 'tags', group: 'Content', colSpan: 2 },
             { name: 'ccEmails', label: 'CC', type: 'tags', group: 'Delivery' },
