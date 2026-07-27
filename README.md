@@ -143,6 +143,7 @@ Open `http://localhost:3000`, sign in at `/login`, and staff users land on `/adm
 | `lint` | `eslint .` | Lint the repo |
 | `typecheck` | `tsc --noEmit` | Type-check without emitting |
 | `db:indexes` | `tsx --conditions=react-server src/db/migrations/run-indexes.ts` | Sync MongoDB indexes for every registered model |
+| `assets:colleges` | `tsx scripts/generate-college-assets.ts` | Regenerate the per-college monogram logos (`public/brand/colleges`) and demo prospectus PDFs (`public/brochures`) the seed links to. Runs automatically before either seed script |
 | `db:seed` | `tsx --conditions=react-server src/db/seeds/run-seed.ts` | Seed demonstration data (upsert) |
 | `db:seed:fresh` | `tsx --conditions=react-server src/db/seeds/run-seed.ts --fresh` | Reset collections, then seed |
 | `lint:fix` | `eslint . --fix` | Lint and auto-fix |

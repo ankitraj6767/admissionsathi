@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Fairmount College of Commerce &amp; Management logo">
+  <title>Fairmount College of Commerce &amp; Management</title>
+  <rect width="128" height="128" rx="26" fill="#0B3B2E"/>
+  <path d="M0 96h128v32H0z" fill="#F59E0B" opacity="0.9"/>
+  <path d="M64 14 108 36v6H20v-6z" fill="#FFFFFF" opacity="0.92"/>
+  <text x="64" y="80" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="42" font-weight="700" fill="#FFFFFF">FC</text>
+</svg>
