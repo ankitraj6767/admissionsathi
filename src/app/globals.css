@@ -217,6 +217,22 @@
     }
   }
 
+  /* Hero headline: always breaks into exactly two lines
+     ("Your Dream College" / "is a Step Away!").
+     - max-inline-size is in `em`, so it scales with the fluid font size and
+       keeps the first line from swallowing the words after "College".
+     - On lg+ the headline sits in a narrow grid column, so the font size is
+       derived from the column width (container query) instead of the viewport,
+       guaranteeing the first line still fits. */
+  .hero-title {
+    max-inline-size: 9.6em;
+    text-wrap: balance;
+  }
+
+  .hero-title-col {
+    container-type: inline-size;
+  }
+
   .surface-card {
     background: var(--color-card);
     border: 1px solid var(--color-line);
@@ -408,11 +424,11 @@
  * these rules only undo the leading margin that would otherwise leave the first
  * line floating away from the top of the input.
  */
-.prose-sathi > :first-child {
+.prose-sathi> :first-child {
   margin-top: 0;
 }
 
-.prose-sathi > :last-child {
+.prose-sathi> :last-child {
   margin-bottom: 0;
 }
 
@@ -445,5 +461,19 @@
 
   to {
     transform: translateY(0);
+  }
+}
+
+/* =========================================================
+   Utilities layer — must win over generated font-size utilities
+   ========================================================= */
+@layer utilities {
+
+  /* On lg+ the hero headline lives in a narrow grid column, so scale it to the
+     column width (not the viewport) so "Your Dream College" stays on one line. */
+  @media (min-width: 1024px) {
+    .hero-title {
+      font-size: min(var(--text-hero), 10.4cqw);
+    }
   }
 }
