@@ -81,7 +81,7 @@ export function LiveClock({ className }: { className?: string }) {
 
             {now ? (
                 <time dateTime={now.toISOString()} className="tabular-nums">
-                    <span className="text-ink">{formatters.date.format(now)}</span>
+                    <span className="font-semibold text-ink">{formatters.date.format(now)}</span>
                     <span className="mx-1.5 text-line" aria-hidden>
                         |
                     </span>
