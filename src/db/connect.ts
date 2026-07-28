@@ -50,12 +50,13 @@ export async function connectToDatabase(): Promise<Mongoose> {
                 dbName: env.MONGODB_DB_NAME,
                 maxPoolSize: isProduction ? 20 : 5,
                 /*
-                 * Keep a couple of sockets warm. With `minPoolSize: 0` the pool is
-                 * reaped while idle, so the first query after a pause pays a full
-                 * TCP + TLS + auth handshake — measured at ~900ms against Atlas,
-                 * which lands squarely on a user's first navigation.
+                 * Keep sockets warm. With `minPoolSize: 0` the pool is reaped while
+                 * idle, so the first query after a pause pays a full TCP + TLS +
+                 * SCRAM handshake — measured at 1.5-2s against Atlas, which lands
+                 * squarely on a user's next navigation. `src/instrumentation.ts`
+                 * forces these connections open at startup so no request does.
                  */
-                minPoolSize: 2,
+                minPoolSize: isProduction ? 5 : 3,
                 serverSelectionTimeoutMS: 10_000,
                 socketTimeoutMS: 45_000,
                 family: 4,
