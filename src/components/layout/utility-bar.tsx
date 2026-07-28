@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Mail, Phone, ShieldCheck, Smartphone } from 'lucide-react';
+import { LiveClock } from './live-clock';
 import { readBool, readString, type PublicSettings } from '@/services/settings.service';
 
 /** Thin top utility bar: trust message, app links, email and phone. */
@@ -14,10 +15,15 @@ export function UtilityBar({ settings }: { settings: PublicSettings }) {
     return (
         <div className="hidden border-b border-line bg-white lg:block">
             <div className="header-shell flex h-9 items-center justify-between gap-4 text-[11.5px] text-ink-soft">
-                <p className="flex items-center gap-1.5 font-medium">
-                    <ShieldCheck className="h-3.5 w-3.5 text-navy-600" aria-hidden />
-                    <span className="text-ink">{message}</span>
-                </p>
+                <div className="flex min-w-0 items-center gap-4">
+                    <p className="flex items-center gap-1.5 font-medium">
+                        <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-navy-600" aria-hidden />
+                        <span className="truncate text-ink">{message}</span>
+                    </p>
+
+                    {/* Hidden on narrower desktops so the trust message keeps priority. */}
+                    <LiveClock className="hidden items-center gap-1.5 border-l border-line pl-4 xl:flex" />
+                </div>
 
                 <div className="flex items-center gap-5">
                     {showApp ? (
