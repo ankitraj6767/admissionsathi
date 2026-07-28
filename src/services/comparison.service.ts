@@ -53,7 +53,7 @@ export async function buildComparison(slugs: string[]): Promise<ComparisonPayloa
     }
 
     const courseCounts = await Promise.all(
-        ordered.map((college) => countActiveCollegeCourses(college._id, 200)),
+        ordered.map((college) => countActiveCollegeCourses(college._id)),
     );
 
     const rows: ComparisonRow[] = [

@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useTransition } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Controller, useForm } from 'react-hook-form';
@@ -8,13 +9,25 @@ import { CheckCircle2, ExternalLink, Save, Trash2 } from 'lucide-react';
 import { createResourceAction, deleteResourceAction, updateResourceAction } from '@/actions/admin/crud.actions';
 import { Button } from '@/components/ui/button';
 import { Checkbox, Field, Input, Select, Textarea } from '@/components/ui/field';
-import { RichTextEditor } from '@/components/admin/rich-text-editor';
 import { ImageField, type ImageValue } from '@/components/admin/image-field';
 import { GalleryField, type GalleryItemValue } from '@/components/admin/gallery-field';
 import { VideoUrlField } from '@/components/admin/video-url-field';
 import { UrlField } from '@/components/admin/url-field';
 import { cn, slugify } from '@/lib/utils';
 import type { AdminField, AdminResource } from '@/config/admin-resources';
+
+/**
+ * The editor is the heaviest part of this form and most resources have no
+ * richtext field at all, so it is fetched only when one is actually rendered
+ * rather than shipped with every create/edit screen.
+ */
+const RichTextEditor = dynamic(
+    () => import('@/components/admin/rich-text-editor').then((m) => m.RichTextEditor),
+    {
+        ssr: false,
+        loading: () => <div className="skeleton h-64 w-full rounded-[10px]" aria-hidden />,
+    },
+);
 
 export interface ResourceFormProps {
     resource: Pick<

@@ -282,20 +282,15 @@ export async function listCollegeCourses(
     );
 }
 
-/**
- * How many active programmes a college lists, capped at `limit`.
- * The comparison table only needs the number, but the cap keeps the read bounded.
- */
-export async function countActiveCollegeCourses(
-    collegeId: unknown,
-    limit = 200,
-): Promise<number> {
-    const rows = await findLean<CollegeCourseDoc>(
-        CollegeCourse,
-        { college: collegeId, status: 'active' } as FilterQuery<CollegeCourseDoc>,
-        { limit },
-    );
-    return rows.length;
+/** How many active programmes a college lists. */
+export async function countActiveCollegeCourses(collegeId: unknown): Promise<number> {
+    // Counted in the database rather than by fetching rows and reading `.length`:
+    // the comparison page only needs the integer, and the old form pulled up to
+    // 200 full documents per college over the wire to produce it.
+    return countDocs<CollegeCourseDoc>(CollegeCourse, {
+        college: collegeId,
+        status: 'active',
+    } as FilterQuery<CollegeCourseDoc>);
 }
 
 /**

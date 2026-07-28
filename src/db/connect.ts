@@ -1,6 +1,6 @@
 import 'server-only';
 import mongoose, { type Mongoose } from 'mongoose';
-import { assertRuntimeEnv, env, isProduction } from '@/lib/env';
+import { assertRuntimeEnv, env, isProduction, isTest } from '@/lib/env';
 
 /**
  * Cached Mongoose connection.
@@ -49,11 +49,37 @@ export async function connectToDatabase(): Promise<Mongoose> {
             .connect(env.MONGODB_URI, {
                 dbName: env.MONGODB_DB_NAME,
                 maxPoolSize: isProduction ? 20 : 5,
-                minPoolSize: 0,
+                /*
+                 * Keep a couple of sockets warm. With `minPoolSize: 0` the pool is
+                 * reaped while idle, so the first query after a pause pays a full
+                 * TCP + TLS + auth handshake — measured at ~900ms against Atlas,
+                 * which lands squarely on a user's first navigation.
+                 */
+                minPoolSize: 2,
                 serverSelectionTimeoutMS: 10_000,
                 socketTimeoutMS: 45_000,
                 family: 4,
-                autoIndex: !isProduction, // in production indexes are created by the migration script
+                /*
+                 * Index building is off against a real cluster, on for tests.
+                 *
+                 * Mongoose's `autoIndex` issues `createIndexes` for every one of
+                 * the ~50 registered models the first time each is used. Against a
+                 * shared Atlas tier those builds saturate the cluster and ordinary
+                 * queries queue behind them: measured 1.5s per query with autoIndex
+                 * on versus 70ms with it off, on the same connection and the same
+                 * data. That was the single largest cause of slow page loads in
+                 * development, so indexes are owned by `npm run db:indexes`, which
+                 * is explicit, runs once and is already required for production.
+                 *
+                 * Tests are the exception and must keep it on: they run against a
+                 * throwaway in-memory server where index builds are local and free,
+                 * and several of them assert behaviour that only a unique index can
+                 * produce (duplicate slug conflicts, notification dedupe keys).
+                 *
+                 * `MONGOOSE_AUTO_INDEX=true` opts back in — useful right after
+                 * adding an index to a model, before running the migration script.
+                 */
+                autoIndex: isTest || process.env.MONGOOSE_AUTO_INDEX === 'true',
             })
             .then((m) => {
                 // Ensure all model files are registered once the connection is live.

@@ -471,6 +471,25 @@ Server Action mutation
 
 Only writes that go through the app invalidate tags. The CLI seed script (`npm run db:seed`) writes to MongoDB directly, outside Next.js, so a cached entry — a `pages` entry for `/[pageSlug]`, for example — can stay stale until its TTL expires. Publishing the same record through `/admin/pages` invalidates the tag correctly.
 
+### What may and may not go in the data cache
+
+`unstable_cache` stores values as `JSON.stringify(result)`. A cached lean document therefore comes back with `Date` as an ISO string and `ObjectId` as a string, while its TypeScript type still claims otherwise — a mismatch that shows up as a runtime error far from the cache call.
+
+Two rules follow, and every cached loader in `src/services` obeys one of them:
+
+1. Cache a plain, derived shape. `getFooterStateLinks()` returns `{ id, slug, name }`, `getStateOptions()` returns `{ label, value }`, `getAdminBadgeCounts()` and `getDashboardOverview()` return numbers only. Nothing is lost in a JSON round trip.
+2. Or revive the dates on the way out. `src/services/home-data.service.ts` caches lean documents and passes them through `withDates(rows, ['publishDate'])`, so the component still receives a real `Date`.
+
+### Navigation performance
+
+Every route under `(public)` renders per request, because `SiteHeader` reads the session. The cost of a navigation is therefore whatever the page's uncached queries cost, and three mechanisms keep that near zero:
+
+- **Data cache for anything shared.** Chrome that renders on every page (settings, both menus, the footer's SEO links) and the homepage panels are all tagged, cached reads, so a warm public page performs no database round trips at all.
+- **`loading.tsx` at `(public)` plus the college/course/exam tab segments.** These do double duty: a click paints a shell immediately, and a dynamic route with no loading boundary cannot be usefully prefetched because the router has nothing to store.
+- **`experimental.staleTimes` and `experimental.dynamicOnHover` (`next.config.ts`).** `dynamicOnHover` prefetches the real RSC payload on hover instead of only the boundary, so the page is usually in the router cache before the click lands; `staleTimes` keeps that payload for 5 minutes, which is what makes back/forward and repeat visits free.
+
+Measured locally against Atlas after these changes (`next start`, warm): homepage 31ms, `/colleges` 90ms, a college tab 250ms, `/predictors` 16ms.
+
 ## Homepage CMS section-key contract
 
 Three pieces must agree on the same key:

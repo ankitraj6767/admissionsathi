@@ -21,6 +21,7 @@ Legend: **Required** = validation fails without it. Scope **server** = validated
 | `MONGODB_URI` | **Yes** | server | MongoDB connection string. Must be non-empty | `mongodb+srv://user:pass@cluster.mongodb.net/admission-sathi?retryWrites=true&w=majority` |
 | `MONGODB_DB_NAME` | No (default `admission-sathi`) | server | Passed as Mongoose `dbName`; overrides any database in the URI path | `admission-sathi` |
 | `MONGOOSE_DEBUG` | No | server | `true` logs every Mongoose query. Ignored in production. Read directly in `src/db/connect.ts`, not part of the schema | `false` |
+| `MONGOOSE_AUTO_INDEX` | No (default off) | server | `true` lets Mongoose create indexes on model use. Off by default because index builds against a shared Atlas tier slow every concurrent query (measured 1.5s vs 70ms). Always on under `NODE_ENV=test`. Use `npm run db:indexes` instead | `false` |
 | `SKIP_ENV_VALIDATION` | No | server | `true` turns env validation errors into warnings during a build | `false` |
 | `NEXT_PUBLIC_SITE_URL` | No (default `http://localhost:3000`) | public | Canonical origin used for absolute URLs, OG tags and `siteConfig.url` | `https://admissionsathi.org` |
 
