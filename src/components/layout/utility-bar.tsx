@@ -14,18 +14,22 @@ export function UtilityBar({ settings }: { settings: PublicSettings }) {
 
     return (
         <div className="hidden border-b border-line bg-white lg:block">
-            <div className="header-shell flex h-9 items-center justify-between gap-4 text-[11.5px] text-ink-soft">
-                <div className="flex min-w-0 items-center gap-4">
-                    <p className="flex items-center gap-1.5 font-medium">
-                        <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-navy-600" aria-hidden />
-                        <span className="truncate text-ink">{message}</span>
-                    </p>
+            {/*
+              Three columns rather than `justify-between` with the clock inside the
+              left group: the outer columns each take an equal share of the leftover
+              space, which keeps the clock centred on the bar itself instead of
+              drifting with the length of the trust message.
+            */}
+            <div className="header-shell grid h-9 grid-cols-[1fr_auto_1fr] items-center gap-4 text-[11.5px] text-ink-soft">
+                <p className="flex min-w-0 items-center gap-1.5 font-medium">
+                    <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-navy-600" aria-hidden />
+                    <span className="truncate text-ink">{message}</span>
+                </p>
 
-                    {/* Hidden on narrower desktops so the trust message keeps priority. */}
-                    <LiveClock className="hidden items-center gap-1.5 border-l border-line pl-4 xl:flex" />
-                </div>
+                {/* Hidden on narrower desktops so the trust message keeps priority. */}
+                <LiveClock className="hidden items-center justify-center gap-1.5 xl:flex" />
 
-                <div className="flex items-center gap-5">
+                <div className="flex items-center justify-end gap-5">
                     {showApp ? (
                         <div className="flex items-center gap-2">
                             <Smartphone className="h-3.5 w-3.5 text-ink-soft" aria-hidden />
