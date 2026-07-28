@@ -1,6 +1,8 @@
+import { Suspense } from 'react';
 import { notFound, redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { CollegeHero } from '@/components/colleges/college-hero';
+import { CardSkeleton, Skeleton } from '@/components/ui/primitives';
 import { getCollegeDetail } from '@/services/college.service';
 import { incrementViewCount } from '@/services/analytics.service';
 import { buildMetadata } from '@/lib/seo/metadata';
@@ -10,6 +12,22 @@ import { getSettings, readString } from '@/services/settings.service';
 interface LayoutProps {
     children: React.ReactNode;
     params: Promise<{ slug: string }>;
+}
+
+/** Placeholder for the tab panel while its data resolves. */
+function CollegeTabFallback() {
+    return (
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]" aria-busy="true">
+            <div className="space-y-4">
+                <CardSkeleton lines={6} />
+                <CardSkeleton lines={4} />
+            </div>
+            <div className="space-y-4">
+                <Skeleton className="h-40 w-full rounded-[18px]" />
+                <Skeleton className="h-56 w-full rounded-[18px]" />
+            </div>
+        </div>
+    );
 }
 
 export const revalidate = 600;
@@ -81,7 +99,20 @@ export default async function CollegeLayout({ children, params }: LayoutProps) {
 
             <CollegeHero college={college} />
 
-            <div className="shell py-6">{children}</div>
+            {/*
+              An explicit boundary rather than a `loading.tsx`, and placed here on
+              purpose: this is *after* the `notFound()`/`redirect()` decision above,
+              so the 404 status for an unknown slug is still committed correctly. A
+              `loading.tsx` on this segment would flush a 200 first and turn every
+              unknown college URL into a soft 404 — see "Route loading states and
+              404 correctness" in docs/architecture.md.
+
+              What it buys: the hero paints as soon as the college resolves, and
+              switching tabs swaps only the panel below it.
+            */}
+            <div className="shell py-6">
+                <Suspense fallback={<CollegeTabFallback />}>{children}</Suspense>
+            </div>
 
             <div className="shell pb-8">
                 <p className="rounded-[10px] border border-line bg-white px-3 py-2 text-[11px] text-ink-soft">

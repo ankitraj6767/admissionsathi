@@ -279,10 +279,13 @@ This is not hypothetical: a blanket `src/app/(public)/loading.tsx` used to turn 
 
 **Rule: a route segment may only have a `loading.tsx` if neither its own page nor any route beneath it can call `notFound()`.**
 
+This rule has been broken once already, by adding a `(public)/loading.tsx` for the performance work — every unknown URL silently went back to `200`. If you add a loading state anywhere, verify with the route matrix in [testing.md](testing.md) before merging; `curl -o /dev/null -w '%{http_code}' /colleges/does-not-exist` is enough.
+
 Consequences:
 
 - There is no `loading.tsx` at the `(public)` group root, and none on `/[pageSlug]`.
-- The 16 listing segments that are parents of a 404-capable detail route deliberately have none either: `/colleges`, `/colleges/state`, `/courses`, `/exams`, `/predictors`, `/scholarships`, `/education-loans`, `/counsellors`, `/articles`, `/news`, `/resources`, `/guides`, `/ebooks`, `/webinars`, `/mock-tests`, `/previous-year-papers`.
+- No listing segment that is the parent of a 404-capable detail route has one **at the segment root**. Seven of them instead keep their index page in an `(index)` route group — `/colleges`, `/courses`, `/exams`, `/articles`, `/news`, `/predictors`, `/scholarships` — so `(index)/loading.tsx` covers only the index page and not the sibling `[slug]` route. Route groups do not affect URLs, so `/colleges` still resolves from `colleges/(index)/page.tsx`. The remaining listing segments (`/colleges/state`, `/education-loans`, `/counsellors`, `/resources`, `/guides`, `/ebooks`, `/webinars`, `/mock-tests`, `/previous-year-papers`) have no loading state yet; the same pattern applies if one is wanted.
+- `/colleges/[slug]` uses the other escape hatch: an explicit `<Suspense>` inside `layout.tsx`, placed after the `notFound()`/`redirect()` decision, wrapping `{children}`. The hero renders as soon as the college resolves and only the tab panel below it streams, with the 404 status still intact.
 - Segments that cannot 404 do have one. 21 route-level loading states exist today: `/contact`, `/faqs`, `/college-reviews`, `/ai-assistant`, `/education-loans/calculator`, `/education-loans/eligibility`, `/education-loans/compare`, `/compare-colleges`, `/career-counselling`, `/college-counselling`, `/course-counselling`, `/book-counselling`, `/counselling`, `/search`, and all seven `/dashboard` segments (`/dashboard`, `bookings`, `loans`, `notifications`, `predictions`, `profile`, `saved`).
 
 To add a loading state to a listing segment that has a 404-capable child, use one of these instead:
@@ -480,15 +483,26 @@ Two rules follow, and every cached loader in `src/services` obeys one of them:
 1. Cache a plain, derived shape. `getFooterStateLinks()` returns `{ id, slug, name }`, `getStateOptions()` returns `{ label, value }`, `getAdminBadgeCounts()` and `getDashboardOverview()` return numbers only. Nothing is lost in a JSON round trip.
 2. Or revive the dates on the way out. `src/services/home-data.service.ts` caches lean documents and passes them through `withDates(rows, ['publishDate'])`, so the component still receives a real `Date`.
 
+### Connection warmup (`src/instrumentation.ts`)
+
+A fresh Node process used to spend about 3.5s before it could answer anything, and that cost landed on whichever page the first visitor opened. Measured against Atlas: `mongoose.connect` 1457ms (SRV lookup, TLS, SCRAM), first admin ping 119ms, **first model query 1958ms** — the handshake for a second pool socket — then 91ms for every query after. Nothing in the application was slow; the connection was simply established lazily, inside a request.
+
+`register()` now connects, imports the model registry and issues four concurrent pings at startup, which forces `minPoolSize` sockets through their handshakes before any request arrives. It logs `startup.db_warmed` with the elapsed time and never throws: if Atlas is unreachable the first request behaves exactly as it did before the hook existed.
+
+This is why `minPoolSize` is 5 in production and 3 in development rather than 0 — an idle-reaped pool would make the next navigation pay the handshake again.
+
 ### Navigation performance
 
-Every route under `(public)` renders per request, because `SiteHeader` reads the session. The cost of a navigation is therefore whatever the page's uncached queries cost, and three mechanisms keep that near zero:
+Every route under `(public)` renders per request, because `SiteHeader` reads the session. Partial Prerendering is not available as a shortcut: `experimental.ppr` was merged into `cacheComponents` in Next.js 16, which requires every cached read to move to `'use cache'` and every `revalidate` export to become a `cacheLife` profile.
+
+The cost of a navigation is therefore whatever the page's uncached queries cost, and four mechanisms keep that near zero:
 
 - **Data cache for anything shared.** Chrome that renders on every page (settings, both menus, the footer's SEO links) and the homepage panels are all tagged, cached reads, so a warm public page performs no database round trips at all.
-- **`loading.tsx` at `(public)` plus the college/course/exam tab segments.** These do double duty: a click paints a shell immediately, and a dynamic route with no loading boundary cannot be usefully prefetched because the router has nothing to store.
+- **Startup connection warmup**, above.
+- **Suspense boundaries that let the shell flush.** Without one, the server sends nothing until the slowest query resolves, so a fresh page load has no first paint to show. The `(index)` loading states and the college layout's boundary bring time-to-first-byte down to 10-25ms on a cold cache; the content then streams in. They also make prefetching worthwhile — a dynamic route with no boundary gives the router nothing to store.
 - **`experimental.staleTimes` and `experimental.dynamicOnHover` (`next.config.ts`).** `dynamicOnHover` prefetches the real RSC payload on hover instead of only the boundary, so the page is usually in the router cache before the click lands; `staleTimes` keeps that payload for 5 minutes, which is what makes back/forward and repeat visits free.
 
-Measured locally against Atlas after these changes (`next start`, warm): homepage 31ms, `/colleges` 90ms, a college tab 250ms, `/predictors` 16ms.
+Measured locally against Atlas with `next start`. Warm cache: homepage 23ms, `/colleges` 122ms (11ms to first byte), a college tab 19ms, `/predictors` 16ms. Cold process **and** empty data cache — the true first-visitor case: listing pages 16-23ms to first byte and 100-220ms complete, detail pages 190-490ms. Before this work the first request to a route cost 3-4s.
 
 ## Homepage CMS section-key contract
 
