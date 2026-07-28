@@ -11,7 +11,7 @@ import { BrandLogo } from './brand-logo';
 import { NewsletterForm } from '@/components/forms/newsletter-form';
 import { getMenu } from '@/services/navigation.service';
 import { getSettings, readBool, readString } from '@/services/settings.service';
-import { listCities, listStates } from '@/db/repositories/geo.repository';
+import { getFooterCityLinks, getFooterStateLinks } from '@/services/geo.service';
 import { BrandIcon } from '@/components/ui/brand-icon';
 import { Icon } from '@/components/ui/icon';
 import { resolveBranding } from '@/lib/branding';
@@ -27,12 +27,14 @@ const SOCIALS: { key: string; label: string; icon: IconDefinition }[] = [
 
 /** Full site footer — every column, link and contact detail comes from MongoDB. */
 export async function SiteFooter() {
+    // All five are cached reads, so the footer costs no database round trips on a
+    // warm cache even though it renders on every public page.
     const [settings, columns, legal, states, cities] = await Promise.all([
         getSettings(),
         getMenu('footer'),
         getMenu('legal'),
-        listStates({ featuredOnly: true, limit: 12 }).catch(() => []),
-        listCities({ featuredOnly: true, limit: 12 }).catch(() => []),
+        getFooterStateLinks(),
+        getFooterCityLinks(),
     ]);
 
     const about = readString(settings, 'site.footerAbout', '');
@@ -168,7 +170,7 @@ export async function SiteFooter() {
                                 <div className="flex flex-wrap gap-x-3 gap-y-1.5">
                                     {states.map((state) => (
                                         <Link
-                                            key={String(state._id)}
+                                            key={state.id}
                                             href={`/colleges/state/${state.slug}`}
                                             className="text-[11.5px] text-white/60 hover:text-orange"
                                         >
@@ -187,7 +189,7 @@ export async function SiteFooter() {
                                 <div className="flex flex-wrap gap-x-3 gap-y-1.5">
                                     {cities.map((city) => (
                                         <Link
-                                            key={String(city._id)}
+                                            key={city.id}
                                             href={`/colleges/city/${city.slug}`}
                                             className="text-[11.5px] text-white/60 hover:text-orange"
                                         >

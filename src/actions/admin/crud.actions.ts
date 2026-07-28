@@ -17,6 +17,7 @@ import { requirePermission } from '@/lib/auth/session';
 import { recordAudit } from '@/services/audit.service';
 import { NotFoundError, fail, runAction, succeed, zodFieldErrors } from '@/lib/action-helpers';
 import { invalidateTags } from '@/lib/revalidate';
+import { CACHE_TAGS } from '@/lib/cache';
 import type { ActionResult } from '@/types/common';
 
 /**
@@ -41,7 +42,10 @@ function resourceOrThrow(key: string) {
 
 function revalidateResource(key: string, tags?: string[]) {
     revalidatePath(`/admin/${key}`);
-    if (tags?.length) invalidateTags(tags);
+    // `adminCounts` covers the cached sidebar badges, dashboard tiles and listing
+    // status chips, so a write is reflected in them immediately instead of after
+    // their short TTL expires.
+    invalidateTags([...(tags ?? []), CACHE_TAGS.adminCounts]);
 }
 
 /** Create a document for any registered admin resource. */

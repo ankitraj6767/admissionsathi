@@ -44,7 +44,25 @@ const nextConfig: NextConfig = {
     compress: true,
     serverExternalPackages: ['mongoose', 'bcryptjs', 'cloudinary'],
     experimental: {
-        optimizePackageImports: ['lucide-react', 'recharts', 'framer-motion'],
+        optimizePackageImports: ['lucide-react', 'recharts'],
+        /*
+         * Client router cache. Every route here renders dynamically (the header
+         * reads the session), and without this the router discards a segment's
+         * payload almost immediately, so going back to a list page re-runs its
+         * queries. Holding dynamic payloads for 5 minutes makes back/forward and
+         * repeat visits paint from memory with no server work at all.
+         */
+        staleTimes: {
+            dynamic: 300,
+            static: 600,
+        },
+        /*
+         * Prefetch the real RSC payload of a dynamic route on hover/touch-start,
+         * instead of only its loading boundary. Combined with the `loading.tsx`
+         * files this is what makes a click feel instant: by the time the pointer
+         * lands, the page is usually already in the router cache.
+         */
+        dynamicOnHover: true,
     },
     images: {
         formats: ['image/avif', 'image/webp'],

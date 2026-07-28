@@ -23,7 +23,7 @@ import {
     OWNERSHIP_TYPES,
     STUDY_MODES,
 } from '@/config/constants';
-import { CACHE_TAGS, CACHE_TTL, cached } from '@/lib/cache';
+import { CACHE_TAGS, CACHE_TTL, cached, reviveDates } from '@/lib/cache';
 import type { FilterGroup } from '@/components/shared/filter-panel';
 import type { CollegeDoc } from '@/db/models/college.model';
 import type { Paginated, SortOption } from '@/types/common';
@@ -214,23 +214,42 @@ export async function buildCollegeFilterGroups(): Promise<FilterGroup[]> {
     ];
 }
 
-/** Full detail payload for /colleges/[slug] and its sub-tabs. */
-export const getCollegeDetail = cache(async (slug: string) => {
-    const college = await getCollegeBySlug(slug);
-    if (!college) {
-        const legacy = await getCollegeBySlugHistory(slug);
-        return legacy ? { redirectTo: legacy.slug as string } : null;
-    }
+/**
+ * Full detail payload for /colleges/[slug] and its sub-tabs.
+ *
+ * Cached because this is the most-visited page shape on the site and it costs five
+ * queries in two dependent waves — the four related reads need the college's `_id`,
+ * so they cannot start until the first one lands. The `reviews` tag is included
+ * alongside `colleges` so moderating a review updates the college page too, rather
+ * than waiting out the TTL.
+ *
+ * React `cache()` still wraps the cached loader: `generateMetadata` and the layout
+ * both call this, and that keeps it to one lookup per request.
+ */
+const loadCollegeDetail = cached(
+    async (slug: string) => {
+        const college = await getCollegeBySlug(slug);
+        if (!college) {
+            const legacy = await getCollegeBySlugHistory(slug);
+            return legacy ? { redirectTo: legacy.slug as string } : null;
+        }
 
-    const [courses, reviews, similar, rankings] = await Promise.all([
-        listCollegeCourses(String(college._id)),
-        listCollegeReviews(String(college._id), { pageSize: 5 }),
-        listSimilarColleges(college, 6),
-        listCollegeRankings(String(college._id)),
-    ]);
+        const [courses, reviews, similar, rankings] = await Promise.all([
+            listCollegeCourses(String(college._id)),
+            listCollegeReviews(String(college._id), { pageSize: 5 }),
+            listSimilarColleges(college, 6),
+            listCollegeRankings(String(college._id)),
+        ]);
 
-    return toPlain({ college, courses, reviews, similar, rankings });
-});
+        return toPlain({ college, courses, reviews, similar, rankings });
+    },
+    ['college-detail'],
+    { tags: [CACHE_TAGS.colleges, CACHE_TAGS.reviews], revalidate: CACHE_TTL.medium },
+);
+
+export const getCollegeDetail = cache(async (slug: string) =>
+    reviveDates(await loadCollegeDetail(slug)),
+);
 
 export async function countCollegesForFilter(filters: CollegeListFilters): Promise<number> {
     return countColleges(buildCollegeFilter(filters));

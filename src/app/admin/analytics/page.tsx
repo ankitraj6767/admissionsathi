@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { SectionCard } from '@/components/shared/content-blocks';
-import { EventBarChart, LeadTrendChart, SourceBreakdownChart } from '@/components/admin/dashboard-charts';
+import { EventBarChart, LeadTrendChart, SourceBreakdownChart } from '@/components/admin/dashboard-charts-lazy';
 import { Badge, EmptyState, IconTile } from '@/components/ui/primitives';
 import {
     getDashboardOverview,

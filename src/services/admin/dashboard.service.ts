@@ -16,6 +16,7 @@ import { countPublishedExams } from '@/db/repositories/exam.repository';
 import { countLeads } from '@/db/repositories/lead.repository';
 import { countActiveRedirects } from '@/db/repositories/site.repository';
 import { toPlain } from '@/db/repositories/base.repository';
+import { CACHE_TAGS, CACHE_TTL, cached } from '@/lib/cache';
 import { logger } from '@/lib/logger';
 
 /** Counts rendered as badges in the admin sidebar. A failure must not break the shell. */
@@ -37,15 +38,31 @@ async function safeCount(label: string, run: () => Promise<number>): Promise<num
     }
 }
 
-export async function getAdminBadgeCounts(): Promise<AdminBadgeCounts> {
-    const [newLeads, pendingReviews, draftContent] = await Promise.all([
-        safeCount('leads.new', () => countLeads({ status: 'new' })),
-        safeCount('reviews.pending', () => countPendingReviews()),
-        safeCount('articles.draft', () => countDraftArticles()),
-    ]);
+/**
+ * Sidebar badge counts, cached for a minute.
+ *
+ * These three counts ran on every single admin navigation — the sidebar is in the
+ * admin layout — which put three round trips in front of every page in the
+ * console. They are ambient information, not something an action is taken on
+ * within the same second, so a short TTL is the right trade: the counts are at
+ * most 60s stale and admin navigation stops paying for them.
+ *
+ * Only primitives are cached, so the `JSON.stringify` the data cache performs is
+ * lossless here.
+ */
+export const getAdminBadgeCounts = cached(
+    async (): Promise<AdminBadgeCounts> => {
+        const [newLeads, pendingReviews, draftContent] = await Promise.all([
+            safeCount('leads.new', () => countLeads({ status: 'new' })),
+            safeCount('reviews.pending', () => countPendingReviews()),
+            safeCount('articles.draft', () => countDraftArticles()),
+        ]);
 
-    return { newLeads, pendingReviews, draftContent };
-}
+        return { newLeads, pendingReviews, draftContent };
+    },
+    ['admin-badge-counts'],
+    { tags: [CACHE_TAGS.adminCounts], revalidate: CACHE_TTL.short },
+);
 
 export interface RecentContentEntry {
     id: string;

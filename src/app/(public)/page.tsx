@@ -13,10 +13,13 @@ import { StickyCta } from '@/components/homepage/sticky-cta';
 import { CardSkeleton } from '@/components/ui/primitives';
 import { getHomepageSections, getSection } from '@/services/homepage.service';
 import { getSettings, readBool, readString } from '@/services/settings.service';
-import { listCourseCategories, listCourses } from '@/db/repositories/course.repository';
-import { listStates } from '@/db/repositories/geo.repository';
-import { listPredictors } from '@/db/repositories/predictor.repository';
-import { listTrendingUpdates } from '@/db/repositories/content.repository';
+import {
+    getHomeCategories,
+    getHomeCourseOptions,
+    getHomePredictors,
+    getHomeTrendingUpdates,
+} from '@/services/home-data.service';
+import { getStateOptions } from '@/services/geo.service';
 import { buildWebsiteJsonLd, buildOrganizationJsonLd, JsonLd } from '@/lib/seo/json-ld';
 import { buildMetadata } from '@/lib/seo/metadata';
 import type {
@@ -60,27 +63,28 @@ export default async function HomePage() {
     const statsSection = getSection<PlatformStatsConfig>(sections, 'platform_stats');
     const stickySection = getSection<StickyCtaConfig>(sections, 'sticky_cta');
 
-    const [categories, courseOptions, states, predictors, updates] = await Promise.all([
-        listCourseCategories({
+    // Every loader below reads through the data cache, so a warm homepage costs
+    // zero database round trips. Editor changes still appear immediately: each
+    // loader is tagged and the admin actions already revalidate those tags.
+    const [categories, courseOptions, stateOptions, predictors, updates] = await Promise.all([
+        getHomeCategories({
             featuredOnly: topCourses.config.categorySlugs.length === 0,
             slugs: topCourses.config.categorySlugs.length ? topCourses.config.categorySlugs : undefined,
             limit: topCourses.config.limit,
-        }).catch(() => []),
-        listCourses({ pageSize: 40, sort: 'popular' })
-            .then((r) => r.items)
-            .catch(() => []),
-        listStates({ limit: 40 }).catch(() => []),
-        listPredictors({
+        }),
+        getHomeCourseOptions(),
+        getStateOptions(),
+        getHomePredictors({
             homepageOnly: predictorSection.config.predictorSlugs.length === 0,
             slugs: predictorSection.config.predictorSlugs.length
                 ? predictorSection.config.predictorSlugs
                 : undefined,
             limit: predictorSection.config.limit,
-        }).catch(() => []),
-        listTrendingUpdates({
+        }),
+        getHomeTrendingUpdates({
             limit: trending.config.limit,
             categories: trending.config.categories,
-        }).catch(() => []),
+        }),
     ]);
 
     const consentText = readString(settings, 'legal.consentText', 'I agree to be contacted.');
@@ -98,8 +102,8 @@ export default async function HomePage() {
                 <HeroSection
                     hero={hero}
                     quickActions={quickActions}
-                    courses={courseOptions.map((c) => ({ label: c.name, value: c.slug }))}
-                    states={states.map((s) => ({ label: s.name, value: String(s._id) }))}
+                    courses={courseOptions}
+                    states={stateOptions}
                     consentText={consentText}
                     showQuickActions={quickActions.isEnabled}
                 />

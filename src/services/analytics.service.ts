@@ -27,6 +27,7 @@ import { countUsers } from '@/db/repositories/user.repository';
 import { countLeads } from '@/db/repositories/lead.repository';
 import { countBookings, countCounsellors } from '@/db/repositories/counsellor.repository';
 import { countPredictorSessions } from '@/db/repositories/predictor.repository';
+import { CACHE_TAGS, CACHE_TTL, cached } from '@/lib/cache';
 import { logger } from '@/lib/logger';
 
 export interface RecordEventInput {
@@ -119,7 +120,7 @@ const startOfToday = () => {
 
 const daysAgo = (days: number) => new Date(Date.now() - days * 86_400_000);
 
-export async function getDashboardOverview(): Promise<DashboardOverview> {
+async function computeDashboardOverview(): Promise<DashboardOverview> {
     const [
         users,
         colleges,
@@ -185,6 +186,20 @@ export async function getDashboardOverview(): Promise<DashboardOverview> {
         pendingApprovals: { reviews: pendingReviews, draftContent: draftArticles },
     };
 }
+
+/**
+ * Dashboard tiles, cached for a minute.
+ *
+ * The uncached version is 22 counts and aggregations in one wave, and it is loaded
+ * by both `/admin` and `/admin/analytics` — the two pages a staff user lands on
+ * most. A 60s TTL keeps the numbers current enough to be useful while taking the
+ * whole wave off the critical path of a navigation. The payload is entirely
+ * numeric, so nothing is lost to the cache's JSON serialisation.
+ */
+export const getDashboardOverview = cached(computeDashboardOverview, ['admin-dashboard-overview'], {
+    tags: [CACHE_TAGS.adminCounts],
+    revalidate: CACHE_TTL.short,
+});
 
 export async function getEventTrend(
     eventName: string,

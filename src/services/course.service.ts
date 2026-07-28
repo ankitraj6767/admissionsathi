@@ -15,7 +15,7 @@ import { listArticlesForEntity } from '@/db/repositories/content.repository';
 import { findExamIdBySlug, listPublishedExamOptions } from '@/db/repositories/exam.repository';
 import { toPlain } from '@/db/repositories/base.repository';
 import { COURSE_LEVELS, STUDY_MODES } from '@/config/constants';
-import { CACHE_TAGS, CACHE_TTL, cached } from '@/lib/cache';
+import { CACHE_TAGS, CACHE_TTL, cached, reviveDates } from '@/lib/cache';
 import type { FilterGroup } from '@/components/shared/filter-panel';
 import type { CourseDoc } from '@/db/models/course.model';
 import type { Paginated, SortOption } from '@/types/common';
@@ -131,23 +131,36 @@ export const buildCourseFilterGroups = cached(
     { tags: [CACHE_TAGS.courses], revalidate: CACHE_TTL.long },
 );
 
-/** Detail payload for /courses/[slug] and its sub-routes. */
-export const getCourseDetail = cache(async (slug: string) => {
-    const course = await getCourseBySlug(slug);
-    if (!course) {
-        const legacy = await getCourseBySlugHistory(slug);
-        return legacy ? { redirectTo: legacy.slug as string } : null;
-    }
+/**
+ * Detail payload for /courses/[slug] and its sub-routes.
+ *
+ * Same reasoning as `getCollegeDetail`: four related reads that cannot start until
+ * the course document resolves, on a page with six tabs that each re-run it.
+ */
+const loadCourseDetail = cached(
+    async (slug: string) => {
+        const course = await getCourseBySlug(slug);
+        if (!course) {
+            const legacy = await getCourseBySlugHistory(slug);
+            return legacy ? { redirectTo: legacy.slug as string } : null;
+        }
 
-    const [specializations, colleges, related, articles] = await Promise.all([
-        listSpecializations(String(course._id)),
-        listCollegesOfferingCourse(String(course._id), { pageSize: 10, sort: 'fee-low' }),
-        listRelatedCourses(course, 6),
-        listArticlesForEntity('relatedCourses', String(course._id), 4),
-    ]);
+        const [specializations, colleges, related, articles] = await Promise.all([
+            listSpecializations(String(course._id)),
+            listCollegesOfferingCourse(String(course._id), { pageSize: 10, sort: 'fee-low' }),
+            listRelatedCourses(course, 6),
+            listArticlesForEntity('relatedCourses', String(course._id), 4),
+        ]);
 
-    return toPlain({ course, specializations, colleges, related, articles });
-});
+        return toPlain({ course, specializations, colleges, related, articles });
+    },
+    ['course-detail'],
+    { tags: [CACHE_TAGS.courses, CACHE_TAGS.articles], revalidate: CACHE_TTL.medium },
+);
+
+export const getCourseDetail = cache(async (slug: string) =>
+    reviveDates(await loadCourseDetail(slug)),
+);
 
 export const getCategoryDetail = cache(async (slug: string) => {
     const category = await getCourseCategoryBySlug(slug);

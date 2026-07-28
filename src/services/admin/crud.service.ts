@@ -21,6 +21,7 @@ import { isSafeUrl } from '@/lib/html/policy';
 import { parseVideoUrl, toEmbedUrl } from '@/lib/media/video';
 import { safeWebUrl } from '@/lib/url';
 import { ConflictError, NotFoundError } from '@/lib/action-helpers';
+import { CACHE_TAGS, CACHE_TTL, cached } from '@/lib/cache';
 import type { AdminField, AdminResource } from '@/config/admin-resources';
 import type { Paginated } from '@/types/common';
 
@@ -514,8 +515,25 @@ export async function bulkUpdateStatus(
     return bulkSetAdminDocValues(model, ids, { status, updatedBy: actorId });
 }
 
+/**
+ * Counts for the listing filter chips, cached for a minute per resource.
+ *
+ * `aggregateAdminStatusCounts` is a `$group` over the whole collection with no
+ * `$match`, so it cannot use an index — it ran on every keystroke of a filter and
+ * every page of every admin table. The chips are a navigation aid, so serving
+ * them up to 60s stale is a straight win. Plain `Record<string, number>`, so the
+ * data cache's JSON round trip is lossless.
+ */
+const loadStatusCounts = cached(
+    async (resource: AdminResource): Promise<Record<string, number>> => {
+        const model = modelFor(resource);
+        const rows = await aggregateAdminStatusCounts(model);
+        return Object.fromEntries(rows.filter((r) => r._id).map((r) => [r._id, r.count]));
+    },
+    ['admin-status-counts'],
+    { tags: [CACHE_TAGS.adminCounts], revalidate: CACHE_TTL.short },
+);
+
 export async function countByStatus(resource: AdminResource): Promise<Record<string, number>> {
-    const model = modelFor(resource);
-    const rows = await aggregateAdminStatusCounts(model);
-    return Object.fromEntries(rows.filter((r) => r._id).map((r) => [r._id, r.count]));
+    return loadStatusCounts(resource);
 }

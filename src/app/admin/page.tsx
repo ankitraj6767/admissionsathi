@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { SectionCard } from '@/components/shared/content-blocks';
 import { Badge, IconTile } from '@/components/ui/primitives';
-import { EventBarChart, LeadTrendChart, SourceBreakdownChart } from '@/components/admin/dashboard-charts';
+import { EventBarChart, LeadTrendChart, SourceBreakdownChart } from '@/components/admin/dashboard-charts-lazy';
 import { requireStaffPage } from '@/lib/auth/session';
 import { can } from '@/lib/auth/rbac';
 import { getDashboardOverview, getEventCounts, getTopPages } from '@/services/analytics.service';

@@ -98,7 +98,9 @@ Limits enforced in `src/lib/storage/index.ts`: images ≤ 5 MB (`jpeg`, `png`, `
 npm run db:indexes
 ```
 
-Iterates every registered model and calls `createIndexes()`. Safe to re-run; only missing indexes are created. Required after a fresh database and after any schema index change, because production connects with `autoIndex: false`.
+Iterates every registered model and calls `createIndexes()`. Safe to re-run; only missing indexes are created.
+
+**This step is required in development too, not just production.** `autoIndex` is off in every environment except tests (`src/db/connect.ts`): letting Mongoose build ~340 indexes across ~50 models on first use saturates a shared Atlas tier, and ordinary queries queue behind the builds — 1.5s per query with it on versus 70ms with it off, same connection, same data. Run this once after a fresh database and again after changing any model's indexes. `MONGOOSE_AUTO_INDEX=true` restores the old behaviour while you iterate.
 
 ## 7. Seed data
 
@@ -173,6 +175,8 @@ npm run test:e2e:ui             # interactive
 | Connection count climbs during development | Expected on hot reload only if the global cache is bypassed; the cache lives on `globalThis.__admissionSathiMongoose` outside production |
 | Query returns nothing for archived rows | `softDeletePlugin` hides `isDeleted: true`. Pass `{ includeDeleted: true }` in query options |
 | Want to see the queries | `MONGOOSE_DEBUG=true` in `.env.local` (development only) |
+| A unique constraint or text search does not behave in development | Indexes are no longer created automatically (see §6). Run `npm run db:indexes`, or set `MONGOOSE_AUTO_INDEX=true` while iterating on a model's indexes |
+| Every query takes ~1.5s | Almost certainly `MONGOOSE_AUTO_INDEX=true` against a shared Atlas cluster: the index builds queue ahead of your queries. Unset it and run `npm run db:indexes` once |
 
 ### Auth.js
 
