@@ -32,7 +32,10 @@ export interface OutboundMessage {
     subject?: string;
     body: string;
     html?: string;
+    /** Admin template key that produced this copy, for logging and provider APIs. */
     templateKey?: string;
+    /** Provider-registered template name, e.g. an approved WhatsApp template. */
+    providerTemplateName?: string;
     variables?: Record<string, string>;
 }
 
@@ -48,6 +51,9 @@ const consoleAdapter = (channel: string): ChannelAdapter => ({
             channel,
             to: message.to,
             subject: message.subject,
+            // Shows whether an admin template supplied the copy or the inline fallback
+            // did — the quickest way to confirm a template edit took effect.
+            templateKey: message.templateKey ?? '(inline fallback)',
             preview: message.body.slice(0, 160),
         });
         return { ok: true, providerId: 'console' };
@@ -135,13 +141,22 @@ function adapterFor(channel: NotificationChannel): ChannelAdapter {
 export interface QueueInput {
     event: string;
     channel: NotificationChannel;
+    /** Fallback subject / heading, used when no active template matches `event`. */
     title: string;
+    /** Fallback body, used when no active template matches `event`. */
     body: string;
     userId?: string;
     to?: string;
     actionUrl?: string;
     audience?: 'user' | 'staff' | 'broadcast';
     payload?: Record<string, unknown>;
+    /**
+     * Values for the `{{placeholders}}` in the admin-managed template whose key
+     * equals `event`. Supplying these is what lets an editor change the wording of a
+     * message without a deploy; the `title` / `body` above stay as the fallback for
+     * when the template is missing, inactive or not yet approved.
+     */
+    variables?: Record<string, string>;
     scheduledFor?: Date;
     dedupeKey?: string;
 }
@@ -156,7 +171,7 @@ export async function queueNotification(input: QueueInput): Promise<void> {
             title: input.title,
             body: input.body,
             actionUrl: input.actionUrl,
-            payload: { ...(input.payload ?? {}), to: input.to },
+            payload: { ...(input.payload ?? {}), to: input.to, variables: input.variables },
             state: 'queued',
             scheduledFor: input.scheduledFor ?? new Date(),
             dedupeKey: input.dedupeKey,
@@ -192,6 +207,78 @@ export async function getWhatsappTemplate(key: string) {
 /** A message is retried up to four times before it is parked as failed. */
 const MAX_ATTEMPTS = 4;
 
+/** What the worker will actually send, after the template has had its say. */
+interface ResolvedCopy {
+    subject: string;
+    body: string;
+    /** Rendered HTML for email; undefined for text-only channels. */
+    html?: string;
+    /** Which source won, for the log line. */
+    source: 'template' | 'inline';
+    /** Provider-side template name, for WhatsApp's approved-template API. */
+    providerTemplateName?: string;
+}
+
+/**
+ * Resolves the copy for one queued message.
+ *
+ * The admin-managed template for `event` wins when there is an active one, so an
+ * editor can reword a message without a deploy. The queued `title` / `body` remain
+ * the fallback — a missing, inactive or unapproved template must never mean a
+ * student gets no message at all.
+ *
+ * A lookup failure is swallowed for the same reason: falling back to copy we
+ * already hold is strictly better than failing the send.
+ */
+async function resolveCopy(notification: NotificationDoc): Promise<ResolvedCopy> {
+    const fallback: ResolvedCopy = {
+        subject: notification.title,
+        body: notification.body,
+        source: 'inline',
+    };
+
+    const variables =
+        ((notification.payload as { variables?: Record<string, string> } | undefined)?.variables) ?? {};
+
+    try {
+        if (notification.channel === 'email') {
+            const template = await findEmailTemplate(notification.event);
+            if (!template) return fallback;
+
+            return {
+                subject: renderTemplate(template.subject, variables) || fallback.subject,
+                body:
+                    (template.bodyText ? renderTemplate(template.bodyText, variables) : '') ||
+                    fallback.body,
+                html: renderTemplate(template.bodyHtml, variables) || undefined,
+                source: 'template',
+            };
+        }
+
+        if (notification.channel === 'whatsapp' || notification.channel === 'sms') {
+            const template = await findWhatsAppTemplate(notification.event);
+            // Only approved templates go out: WhatsApp rejects unapproved ones at the
+            // provider, and sending unreviewed marketing copy is a compliance risk.
+            if (!template || template.approvalStatus !== 'approved') return fallback;
+
+            return {
+                subject: fallback.subject,
+                body: renderTemplate(template.bodyText, variables) || fallback.body,
+                source: 'template',
+                providerTemplateName: template.providerTemplateName,
+            };
+        }
+    } catch (error) {
+        logger.warn('notification.template_lookup_failed', {
+            event: notification.event,
+            channel: notification.channel,
+            error: error instanceof Error ? error.message : String(error),
+        });
+    }
+
+    return fallback;
+}
+
 /** Processes queued notifications. Called by the cron Route Handler. */
 export async function processNotificationQueue(limit = 25): Promise<{
     processed: number;
@@ -225,23 +312,33 @@ export async function processNotificationQueue(limit = 25): Promise<{
 
             if (!to) throw new Error('No destination address for notification');
 
+            const copy = await resolveCopy(notification);
+
             const adapter = adapterFor(notification.channel as NotificationChannel);
             const result = await adapter.send({
                 to,
-                subject: notification.title,
-                body: notification.body,
-                // Email gets the branded shell; SMS and WhatsApp stay plain text.
+                subject: copy.subject,
+                body: copy.body,
+                // Email gets the branded shell; SMS and WhatsApp stay plain text. A
+                // template's HTML is placed inside the shell rather than replacing it,
+                // so editors cannot accidentally ship an email without the footer and
+                // unsubscribe link.
                 html:
                     notification.channel === 'email'
                         ? renderEmailHtml({
-                            title: notification.title,
-                            body: notification.body,
+                            title: copy.subject,
+                            body: copy.html ?? copy.body,
                             action: notification.actionUrl
                                 ? { label: 'Open Admission Sathi', url: notification.actionUrl }
                                 : undefined,
                             showPreferencesLink: Boolean(notification.user),
                         })
                         : undefined,
+                templateKey: copy.source === 'template' ? notification.event : undefined,
+                providerTemplateName: copy.providerTemplateName,
+                variables:
+                    ((notification.payload as { variables?: Record<string, string> } | undefined)
+                        ?.variables) ?? undefined,
             });
 
             if (result.ok) {

@@ -26,6 +26,7 @@ import { Permission, Role } from '@/db/models/role.model';
 import { User } from '@/db/models/user.model';
 import { City, State } from '@/db/models/geo.model';
 import {
+    FormDefinition,
     HomepageSection,
     NavigationItem,
     NavigationMenu,
@@ -480,7 +481,14 @@ export async function seedCommunicationTemplates(adminId: Types.ObjectId): Promi
             key: 'booking.reminder',
             name: 'Booking reminder',
             bodyText: 'Reminder: your Admission Sathi counselling session is on {{scheduledAt}}.',
-            availableVariables: ['name', 'scheduledAt'],
+            availableVariables: ['name', 'scheduledAt', 'counsellorName'],
+        },
+        {
+            key: 'booking.rescheduled',
+            name: 'Booking rescheduled',
+            bodyText:
+                'Hi {{name}}, your Admission Sathi session ({{reference}}) has been moved to {{scheduledAt}}.',
+            availableVariables: ['name', 'reference', 'scheduledAt', 'counsellorName'],
         },
     ];
 
@@ -493,4 +501,126 @@ export async function seedCommunicationTemplates(adminId: Types.ObjectId): Promi
     }
 
     log(`Seeded ${emailTemplates.length} email and ${whatsappTemplates.length} WhatsApp templates`);
+}
+
+/* --------------------------- lead capture forms --------------------------- */
+
+/**
+ * Form definitions for the admin Forms module.
+ *
+ * Each row documents an enquiry point that already exists on the site, so the
+ * `leadSource` values line up with `LEAD_SOURCES` and therefore with the source
+ * breakdown on `/admin/leads`. Editors use these to control the field list, the
+ * submit label, the success message and who gets notified.
+ */
+export async function seedForms(adminId: Types.ObjectId): Promise<void> {
+    const nameField = { key: 'name', label: 'Full name', type: 'text' as const, required: true, placeholder: 'Your full name', displayOrder: 10 };
+    const phoneField = { key: 'phone', label: 'Mobile number', type: 'tel' as const, required: true, placeholder: '10-digit mobile number', displayOrder: 20 };
+    const emailField = { key: 'email', label: 'Email', type: 'email' as const, required: false, placeholder: 'you@example.com', displayOrder: 30 };
+    const consentField = { key: 'consent', label: 'I agree to be contacted about my enquiry', type: 'checkbox' as const, required: true, displayOrder: 90 };
+
+    const forms = [
+        {
+            key: 'homepage_counselling',
+            name: 'Homepage counselling form',
+            slug: 'homepage-counselling',
+            description: 'The hero form on the homepage. Highest-volume capture point.',
+            leadSource: 'homepage_counselling_form',
+            submitLabel: 'Book My Counselling',
+            successMessage: 'Request confirmed. A counsellor will call you shortly.',
+            fields: [
+                nameField,
+                phoneField,
+                {
+                    key: 'courseInterest', label: 'Course of interest', type: 'select' as const, required: false, displayOrder: 40, options: [
+                        { label: 'Engineering', value: 'engineering' },
+                        { label: 'Medical', value: 'medical' },
+                        { label: 'Management', value: 'management' },
+                        { label: 'BCA / IT', value: 'bca-it' },
+                        { label: 'Law', value: 'law' },
+                        { label: 'Nursing', value: 'nursing' },
+                    ]
+                },
+                {
+                    key: 'preferredTime', label: 'Preferred time', type: 'select' as const, required: false, displayOrder: 50, options: [
+                        { label: 'Morning (9 AM – 12 PM)', value: 'morning' },
+                        { label: 'Afternoon (12 PM – 4 PM)', value: 'afternoon' },
+                        { label: 'Evening (4 PM – 8 PM)', value: 'evening' },
+                        { label: 'Anytime', value: 'anytime' },
+                    ]
+                },
+                consentField,
+            ],
+        },
+        {
+            key: 'college_enquiry',
+            name: 'College enquiry form',
+            slug: 'college-enquiry',
+            description: 'Shown on a college profile when a student asks about admission.',
+            leadSource: 'college_enquiry',
+            submitLabel: 'Send Enquiry',
+            successMessage: 'Enquiry sent. Our counsellor will share the admission details.',
+            fields: [nameField, phoneField, emailField, { key: 'message', label: 'What would you like to know?', type: 'textarea' as const, required: false, displayOrder: 40 }, consentField],
+        },
+        {
+            key: 'loan_enquiry',
+            name: 'Education loan enquiry',
+            slug: 'loan-enquiry',
+            description: 'Captured from the loan eligibility checker and calculator.',
+            leadSource: 'loan_enquiry',
+            submitLabel: 'Check My Eligibility',
+            successMessage: 'Thanks — a finance advisor will walk you through the options.',
+            fields: [
+                nameField,
+                phoneField,
+                emailField,
+                { key: 'loanAmount', label: 'Loan amount required (₹)', type: 'text' as const, required: false, placeholder: 'e.g. 800000', displayOrder: 40 },
+                consentField,
+            ],
+        },
+        {
+            key: 'brochure_download',
+            name: 'Brochure download gate',
+            slug: 'brochure-download',
+            description: 'Collects a contact before releasing a college prospectus PDF.',
+            leadSource: 'brochure_download',
+            submitLabel: 'Download Brochure',
+            successMessage: 'Your download is starting. We have also emailed you a copy.',
+            fields: [nameField, phoneField, emailField, consentField],
+        },
+        {
+            key: 'contact_us',
+            name: 'Contact us form',
+            slug: 'contact-us',
+            description: 'General enquiries from the contact page.',
+            leadSource: 'contact_form',
+            submitLabel: 'Send Message',
+            successMessage: 'Message received. We reply within one working day.',
+            fields: [
+                nameField,
+                { ...emailField, required: true },
+                { key: 'phone', label: 'Mobile number', type: 'tel' as const, required: false, displayOrder: 25 },
+                { key: 'subject', label: 'Subject', type: 'text' as const, required: true, displayOrder: 40 },
+                { key: 'message', label: 'Message', type: 'textarea' as const, required: true, displayOrder: 50 },
+            ],
+        },
+    ];
+
+    for (const form of forms) {
+        await FormDefinition.updateOne(
+            { key: form.key },
+            {
+                $set: {
+                    ...form,
+                    notifyEmails: ['leads@admissionsathi.org'],
+                    status: 'active',
+                    updatedBy: adminId,
+                },
+                $setOnInsert: { submissionCount: 0, createdBy: adminId },
+            },
+            { upsert: true },
+        );
+    }
+
+    log(`Seeded ${forms.length} lead capture form definitions`);
 }

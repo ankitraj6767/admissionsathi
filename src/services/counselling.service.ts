@@ -189,6 +189,17 @@ export async function createBookingFromForm(
         timeZone: 'Asia/Kolkata',
     });
 
+    // Variables for the admin-managed `booking.*` templates; the inline copy below
+    // remains the fallback when no active template matches.
+    const bookingVariables = {
+        name: input.name,
+        reference,
+        scheduledAt: whenLabel,
+        counsellorName: counsellor?.name ?? 'your counsellor',
+        mode: input.mode,
+        meetingLink: booking.meetingLink ?? '',
+    };
+
     if (input.email) {
         await queueNotification({
             event: 'booking.confirmed',
@@ -197,6 +208,7 @@ export async function createBookingFromForm(
             title: `Your counselling session is confirmed for ${whenLabel}`,
             body: `Hi ${input.name}, your ${input.mode.toLowerCase()} session${counsellor ? ` with ${counsellor.name}` : ''} is confirmed for ${whenLabel}. Reference ${reference}. Join link: ${booking.meetingLink}`,
             actionUrl: '/dashboard/bookings',
+            variables: bookingVariables,
             dedupeKey: `booking-email-${booking._id}`,
         });
     }
@@ -207,6 +219,7 @@ export async function createBookingFromForm(
         to: input.phone,
         title: 'Session confirmed',
         body: `Hi ${input.name}, your Admission Sathi counselling session is confirmed for ${whenLabel}. Ref ${reference}.`,
+        variables: bookingVariables,
         dedupeKey: `booking-wa-${booking._id}`,
     });
 
@@ -219,6 +232,7 @@ export async function createBookingFromForm(
             to: input.phone,
             title: 'Session reminder',
             body: `Reminder: your Admission Sathi counselling session is on ${whenLabel}.`,
+            variables: bookingVariables,
             scheduledFor: reminderAt,
             dedupeKey: `booking-reminder-${booking._id}`,
         });
@@ -260,12 +274,24 @@ export async function rescheduleBooking(
             : {}),
     });
 
+    const whenLabel = scheduledAt.toLocaleString('en-IN', {
+        dateStyle: 'medium',
+        timeStyle: 'short',
+        timeZone: 'Asia/Kolkata',
+    });
+
     await queueNotification({
         event: 'booking.rescheduled',
         channel: 'whatsapp',
         to: booking.phone,
         title: 'Session rescheduled',
-        body: `Your Admission Sathi session has been moved to ${scheduledAt.toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kolkata' })}.`,
+        body: `Your Admission Sathi session has been moved to ${whenLabel}.`,
+        variables: {
+            name: booking.studentName,
+            reference: booking.reference,
+            scheduledAt: whenLabel,
+            counsellorName: booking.counsellorName ?? 'your counsellor',
+        },
     });
 }
 

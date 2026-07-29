@@ -105,11 +105,16 @@ Iterates every registered model and calls `createIndexes()`. Safe to re-run; onl
 ## 7. Seed data
 
 ```bash
-npm run db:seed          # upsert, safe to re-run
-npm run db:seed:fresh    # clears collections first, then seeds
+npm run db:seed           # upsert for most modules, but see the warning below
+npm run db:seed:fresh     # clears collections first, then seeds
+npm run db:seed:additive  # upsert-only subset, safe against a live database
 ```
 
-Seeds roles and permissions, users, settings, homepage sections, editor-managed static pages, navigation, communication templates, geography, course categories, exams, courses, colleges, predictors, finance, counsellors, content and sample leads, then recomputes counters. Each module prints what it inserted, so the counts in the terminal are authoritative.
+Seeds roles and permissions, users, settings, homepage sections, editor-managed static pages, navigation, communication templates, lead capture forms, geography, course categories, exams, courses, colleges, predictors, finance, counsellors, content and sample leads, then recomputes counters. Each module prints what it inserted, so the counts in the terminal are authoritative.
+
+> **`db:seed` is not fully non-destructive.** Despite the "upsert" label, `seedSampleLeads()` opens with `Lead.deleteMany({})`, `LeadActivity.deleteMany({})` and `CounsellingBooking.deleteMany({})`. On a database that has taken real enquiries, that deletes them along with the demo rows. Only run it against a database you are willing to lose leads from.
+
+`npm run db:seed:additive` (`scripts/seed-additive.ts`) exists for exactly that case. It runs the subset that is upsert-only and therefore safe to re-run at any time: form definitions, email and WhatsApp templates, and counsellor focus states. It deletes nothing, and it derives the acting admin from the existing `super_admin` user rather than creating one.
 
 `seedContent()` (`src/db/seeds/seed-modules.ts`) inserts 62 resource records: for each of the first 8 exams, 3 previous-year papers + 1 mock test + 1 syllabus guide (40), plus 10 state counselling guides, 5 e-books, 5 webinars and 2 admission calendars.
 
