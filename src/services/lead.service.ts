@@ -168,6 +168,15 @@ export async function createLeadFromForm(
     // 5. Acknowledgements (queued, never blocking the response).
     const supportPhone = readString(settings, 'contact.phone', '');
 
+    // Variables for the admin-managed `lead.acknowledgement` templates. The inline
+    // title/body below stay as the fallback for when no active template exists.
+    const ackVariables = {
+        name: input.name,
+        reference,
+        counsellorName: counsellor?.name ?? 'A counsellor',
+        supportPhone,
+    };
+
     if (input.email) {
         await queueNotification({
             event: 'lead.acknowledgement',
@@ -177,6 +186,7 @@ export async function createLeadFromForm(
             body: `Hi ${input.name}, thanks for reaching out to Admission Sathi. Your reference number is ${reference}. ${counsellor ? `${counsellor.name} will contact you shortly.` : 'A counsellor will contact you shortly.'
                 } Need help sooner? Call ${supportPhone}.`,
             actionUrl: '/counselling',
+            variables: ackVariables,
             dedupeKey: `lead-ack-email-${lead._id}`,
         });
     }
@@ -187,6 +197,7 @@ export async function createLeadFromForm(
         to: input.phone,
         title: 'Admission Sathi',
         body: `Hi ${input.name}, your free counselling request (${reference}) is confirmed. Our counsellor will call you soon. — Admission Sathi`,
+        variables: ackVariables,
         dedupeKey: `lead-ack-wa-${lead._id}`,
     });
 

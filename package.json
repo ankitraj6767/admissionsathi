@@ -17,6 +17,7 @@
     "db:indexes": "tsx --conditions=react-server src/db/migrations/run-indexes.ts",
     "predb:seed": "npm run assets:colleges",
     "db:seed": "tsx --conditions=react-server src/db/seeds/run-seed.ts",
+    "db:seed:additive": "tsx --conditions=react-server scripts/seed-additive.ts",
     "predb:seed:fresh": "npm run assets:colleges",
     "db:seed:fresh": "tsx --conditions=react-server src/db/seeds/run-seed.ts --fresh",
     "test": "vitest run",

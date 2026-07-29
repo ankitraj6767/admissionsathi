@@ -6,6 +6,7 @@ import {
     log,
     resetDatabase,
     seedCommunicationTemplates,
+    seedForms,
     seedGeo,
     seedHomepageSections,
     seedNavigation,
@@ -64,6 +65,7 @@ async function main() {
     await seedNavigation(adminId);
     await seedStaticPages(adminId);
     await seedCommunicationTemplates(adminId);
+    await seedForms(adminId);
 
     console.log('\n▸ Geography');
     const { stateIdBySlug, cityIdBySlug } = await seedGeo(adminId, STATE_SEEDS);

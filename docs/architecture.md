@@ -477,6 +477,53 @@ Each adapter is an internal interface with one implementation per provider, chos
 
 Partially implemented today: `STORAGE_PROVIDER=s3` falls back to local upload, `EMAIL_PROVIDER=smtp`, `WHATSAPP_PROVIDER=gupshup`, all `SMS_PROVIDER` values other than `console`, and `AI_PROVIDER=bedrock` have no adapter yet and degrade to the console/local/mock path.
 
+### Admin-managed message templates
+
+`/admin/email-templates` and `/admin/whatsapp-templates` are not decorative: the
+notification worker resolves copy through them on every send.
+
+The contract is a single convention — **a template's `key` equals the notification
+`event`**. `queueNotification({ event: 'lead.acknowledgement', … })` therefore picks
+up the template keyed `lead.acknowledgement`, and an editor can reword that message
+without a deploy.
+
+```
+queueNotification({ event, channel, title, body, variables })
+        │                              └── fallback copy ──┐
+        ▼                                                  │
+  Notification row (payload.variables)                      │
+        ▼                                                   │
+  processNotificationQueue → resolveCopy(notification)       │
+        │                                                   │
+        ├── EmailTemplate/WhatsAppTemplate by key = event ───┤
+        └── renderTemplate('{{name}}', variables) ───────────┘
+```
+
+Rules `resolveCopy` enforces:
+
+- The queued `title` / `body` are always supplied by the caller and act as the
+  fallback. A missing, inactive or unapproved template must never mean a student
+  receives nothing.
+- WhatsApp templates are used only when `approvalStatus === 'approved'`. Meta rejects
+  unapproved templates at the provider, and sending unreviewed copy is a compliance
+  risk.
+- A template that renders to an empty string (typically a typo'd placeholder) loses
+  to the fallback rather than sending a blank message.
+- Email template HTML is placed *inside* the branded shell from `src/emails/layout.ts`
+  rather than replacing it, so an editor cannot ship an email without the footer and
+  preferences link.
+- A lookup failure is logged and swallowed — degrading to copy we already hold beats
+  failing the send.
+
+`{{placeholders}}` are filled from the `variables` passed at the call site, and each
+template row lists its `availableVariables` so an editor knows what is on offer.
+Currently supplied: `lead.acknowledgement` (`name`, `reference`, `counsellorName`,
+`supportPhone`) and `booking.confirmed` / `booking.reminder` / `booking.rescheduled`
+(`name`, `reference`, `scheduledAt`, `counsellorName`, `mode`, `meetingLink`).
+
+The `notification.console_send` log line reports `templateKey`, which is the quickest
+way to confirm whether a template edit took effect or the fallback was used.
+
 ### Adding a provider
 
 1. Implement the interface in the same file as its siblings, e.g. an SMS adapter:
