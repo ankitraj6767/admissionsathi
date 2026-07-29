@@ -80,6 +80,85 @@ Cloudinary credentials are missing at upload time ⇒ `uploadFile` throws `Cloud
 | `SMS_API_KEY` | No | server | Provider API key, for the future adapter | `••••••` |
 | `SMS_SENDER_ID` | No | server | DLT-approved sender/header id | `ADMSTH` |
 
+## Turning on real delivery
+
+Until a provider is configured, every channel uses the console adapter: messages are
+written to the log and nothing reaches a recipient. The queue still reports them as
+`sent`, because the adapter succeeded — so "sent" in `/admin/notifications` means
+"handed to the adapter", not "delivered".
+
+Choosing a provider the codebase does not implement (`smtp`, `gupshup`, `twilio`,
+`msg91`) silently keeps the console adapter. `adapterFor()` logs
+`notification.provider_not_implemented` once per channel when that happens, which is
+the only signal you will get.
+
+### Email via Resend
+
+1. Sign up at [resend.com](https://resend.com) and create a team.
+2. **Domains → Add Domain**, enter the domain you will send from
+   (`admissionsathi.org`). Resend shows a DKIM `TXT` record, an SPF `TXT` record and
+   a return-path `MX`/`CNAME`.
+3. Add those records at your DNS host, then press **Verify**. Propagation is usually
+   minutes; some hosts need a trailing dot on the record value. See
+   [Resend's add-a-domain guide](https://resend.com/docs/add-a-domain).
+4. **API Keys → Create API Key**, scope it to *Sending access*, copy the `re_…`
+   value — it is shown once.
+5. Set:
+   ```
+   EMAIL_PROVIDER=resend
+   RESEND_API_KEY=re_...
+   EMAIL_FROM=Admission Sathi <no-reply@admissionsathi.org>
+   ```
+   `EMAIL_FROM` must be on the verified domain or Resend rejects the send.
+
+Before the domain verifies you can still test: Resend allows sending from
+`onboarding@resend.dev`, but only to the address that owns the Resend account.
+
+### WhatsApp via the Meta Cloud API
+
+This is the involved one, and **business-initiated messages must use a template Meta
+has approved** — free-form text is only allowed inside the 24-hour window that opens
+when the user messages you first. Every message this platform sends is
+business-initiated.
+
+1. Create a Meta app at [developers.facebook.com](https://developers.facebook.com) →
+   **My Apps → Create App → Business**.
+2. Add the **WhatsApp** product. Meta creates a test number and a WhatsApp Business
+   Account (WABA) for you.
+3. Complete **Business Verification** in Meta Business Suite (needs business
+   documents). Until then you are limited to a handful of test recipients you add
+   manually.
+4. Register your own sending number under **WhatsApp → API Setup → Add phone
+   number**. It must not be active on the consumer WhatsApp app.
+5. Copy the **Phone number ID** from API Setup — that is
+   `WHATSAPP_PHONE_NUMBER_ID`, not the phone number itself.
+6. The token shown on that screen expires in 24 hours. For production create a
+   permanent one: **Business Settings → Users → System Users → Add**, give it the
+   WABA asset with *Full control*, then **Generate token** with the
+   `whatsapp_business_messaging` and `whatsapp_business_management` scopes.
+7. Register each message template under **WhatsApp Manager → Message templates**.
+   Meta templates use positional placeholders (`{{1}}`, `{{2}}`) and take up to a day
+   to approve.
+8. In `/admin/whatsapp-templates`, set **Provider template name** on the matching
+   row to the name you registered, and make sure `availableVariables` is in the same
+   order as Meta's `{{1}}`…`{{n}}`. That ordering is what `buildMetaPayload()` maps.
+9. Set:
+   ```
+   WHATSAPP_PROVIDER=meta
+   WHATSAPP_API_TOKEN=EAAG...
+   WHATSAPP_PHONE_NUMBER_ID=102938475601234
+   ```
+
+Without a **Provider template name** the adapter falls back to a plain-text send,
+which Meta will reject outside an open service window.
+
+### SMS
+
+No adapter exists. `SMS_PROVIDER` accepts `twilio` and `msg91` but both behave like
+`console`. Indian SMS also needs DLT registration of the sender id and each template
+before anything can be delivered, so this needs implementation plus a compliance
+step.
+
 ## AI
 
 | Variable | Required | Scope | Purpose | Example |

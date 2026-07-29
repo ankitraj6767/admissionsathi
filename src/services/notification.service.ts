@@ -36,6 +36,10 @@ export interface OutboundMessage {
     templateKey?: string;
     /** Provider-registered template name, e.g. an approved WhatsApp template. */
     providerTemplateName?: string;
+    /** Positional parameters for the provider template, in `{{1}}`…`{{n}}` order. */
+    templateParams?: string[];
+    /** BCP-47-ish language code the provider template is registered under. */
+    templateLanguage?: string;
     variables?: Record<string, string>;
 }
 
@@ -88,6 +92,52 @@ const resendAdapter: ChannelAdapter = {
     },
 };
 
+/**
+ * Builds the Meta Cloud API request body.
+ *
+ * Business-initiated WhatsApp messages — which is every message this platform
+ * sends, since the student never messages us first — must use a template that Meta
+ * has approved. A free-form `type: 'text'` send is only allowed inside the
+ * 24-hour customer service window that opens when the user replies, so outside it
+ * Meta rejects the call. That is why a template is preferred whenever the admin
+ * record carries a `providerTemplateName`.
+ *
+ * Meta templates use positional placeholders (`{{1}}`, `{{2}}`), while ours are
+ * named, so the parameter order comes from the template's `availableVariables`.
+ * Keep that list in the same order as the placeholders registered with Meta.
+ *
+ * The plain-text branch remains for replies inside an open service window, and so
+ * a misconfigured template does not mean no message at all.
+ */
+export function buildMetaPayload(message: OutboundMessage): Record<string, unknown> {
+    const to = message.to.replace(/\D/g, '');
+
+    if (message.providerTemplateName && message.templateParams?.length) {
+        return {
+            messaging_product: 'whatsapp',
+            to,
+            type: 'template',
+            template: {
+                name: message.providerTemplateName,
+                language: { code: message.templateLanguage ?? 'en' },
+                components: [
+                    {
+                        type: 'body',
+                        parameters: message.templateParams.map((text) => ({ type: 'text', text })),
+                    },
+                ],
+            },
+        };
+    }
+
+    return {
+        messaging_product: 'whatsapp',
+        to,
+        type: 'text',
+        text: { body: message.body },
+    };
+}
+
 const metaWhatsappAdapter: ChannelAdapter = {
     id: 'meta-whatsapp',
     async send(message) {
@@ -103,12 +153,7 @@ const metaWhatsappAdapter: ChannelAdapter = {
                         Authorization: `Bearer ${env.WHATSAPP_API_TOKEN}`,
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify({
-                        messaging_product: 'whatsapp',
-                        to: message.to.replace(/\D/g, ''),
-                        type: 'text',
-                        text: { body: message.body },
-                    }),
+                    body: JSON.stringify(buildMetaPayload(message)),
                 },
             );
             if (!res.ok) return { ok: false, error: `WhatsApp responded ${res.status}` };
@@ -119,14 +164,45 @@ const metaWhatsappAdapter: ChannelAdapter = {
     },
 };
 
+/**
+ * Providers the env schema accepts but no adapter implements yet.
+ *
+ * Setting one of these looks like it enabled delivery and silently does not — the
+ * worst kind of production failure, because the queue reports every message as
+ * sent. Warn loudly instead of failing closed: an operator who has not finished
+ * wiring a provider still wants the rest of the platform working.
+ */
+const UNIMPLEMENTED_PROVIDERS: Record<string, string[]> = {
+    email: ['smtp'],
+    whatsapp: ['gupshup'],
+    sms: ['twilio', 'msg91'],
+};
+
+const warnedProviders = new Set<string>();
+
+function warnIfUnimplemented(channel: string, provider: string): void {
+    if (!UNIMPLEMENTED_PROVIDERS[channel]?.includes(provider)) return;
+    if (warnedProviders.has(`${channel}:${provider}`)) return;
+
+    warnedProviders.add(`${channel}:${provider}`);
+    logger.warn('notification.provider_not_implemented', {
+        channel,
+        provider,
+        message: `No adapter exists for ${provider}; ${channel} messages are being logged, not delivered.`,
+    });
+}
+
 function adapterFor(channel: NotificationChannel): ChannelAdapter {
     if (channel === 'email') {
+        warnIfUnimplemented('email', env.EMAIL_PROVIDER);
         return env.EMAIL_PROVIDER === 'resend' ? resendAdapter : consoleAdapter('email');
     }
     if (channel === 'whatsapp') {
+        warnIfUnimplemented('whatsapp', env.WHATSAPP_PROVIDER);
         return env.WHATSAPP_PROVIDER === 'meta' ? metaWhatsappAdapter : consoleAdapter('whatsapp');
     }
     if (channel === 'sms') {
+        warnIfUnimplemented('sms', env.SMS_PROVIDER);
         return consoleAdapter('sms');
     }
     return consoleAdapter('in_app');
@@ -233,6 +309,9 @@ interface ResolvedCopy {
     source: 'template' | 'inline';
     /** Provider-side template name, for WhatsApp's approved-template API. */
     providerTemplateName?: string;
+    /** Values for the provider template's positional placeholders. */
+    templateParams?: string[];
+    templateLanguage?: string;
 }
 
 /**
@@ -297,6 +376,10 @@ async function resolveCopy(notification: NotificationDoc): Promise<ResolvedCopy>
                 body: renderTemplate(template.bodyText, variables) || fallback.body,
                 source: 'template',
                 providerTemplateName: template.providerTemplateName,
+                // Positional order comes from `availableVariables`, which must mirror
+                // the `{{1}}`…`{{n}}` order registered with the provider.
+                templateParams: template.availableVariables.map((key) => variables[key] ?? ''),
+                templateLanguage: template.language,
             };
         }
     } catch (error) {
@@ -367,6 +450,8 @@ export async function processNotificationQueue(limit = 25): Promise<{
                         : undefined,
                 templateKey: copy.source === 'template' ? notification.event : undefined,
                 providerTemplateName: copy.providerTemplateName,
+                templateParams: copy.templateParams,
+                templateLanguage: copy.templateLanguage,
                 variables:
                     ((notification.payload as { variables?: Record<string, string> } | undefined)
                         ?.variables) ?? undefined,
