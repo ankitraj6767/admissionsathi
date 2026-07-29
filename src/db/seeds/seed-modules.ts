@@ -12,6 +12,7 @@ import { EXAM_SEEDS, SEED_EXAM_YEAR } from './data/exam.data';
 import { STATE_SEEDS } from './data/geo.data';
 import { LOAN_DOCUMENTS, LOAN_PROVIDER_SEEDS, SCHOLARSHIP_SEEDS } from './data/finance.data';
 import { ARTICLE_SEEDS, COUNSELLOR_SEEDS, NEWS_SEEDS } from './data/people-content.data';
+import { HOMEPAGE_FAQ_SEEDS } from './data/homepage-faq.data';
 import { log, type SeedContext } from './seed-core';
 
 function daysFromNow(days: number): Date {
@@ -653,6 +654,20 @@ export async function seedContent(
             scope: 'global',
             displayOrder: (index + 1) * 10,
             isFeatured: index < 3,
+            status: 'active',
+            createdBy: adminId,
+        })),
+    );
+
+    const homepageFaqs = HOMEPAGE_FAQ_SEEDS;
+
+    await FAQ.deleteMany({ scope: 'homepage' });
+    await FAQ.insertMany(
+        homepageFaqs.map((faq, index) => ({
+            ...faq,
+            scope: 'homepage',
+            displayOrder: (index + 1) * 10,
+            isFeatured: true,
             status: 'active',
             createdBy: adminId,
         })),

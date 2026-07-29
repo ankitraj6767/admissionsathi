@@ -246,6 +246,16 @@ export const COLLEGE_TAB_SEGMENTS = COLLEGE_TABS.filter((tab) => tab.segment).ma
     (tab) => tab.segment,
 );
 
+/**
+ * Stable section keys for the homepage builder.
+ *
+ * The key is the contract: it appears in `HOMEPAGE_CONFIG_SCHEMAS`, in
+ * `HOMEPAGE_SECTION_DRAFTS`, and as the `key` of a `HomepageSection` row. Renaming
+ * one orphans its stored row, so add rather than rename.
+ *
+ * Order here is only the bootstrap order; editors reorder by drag-and-drop and the
+ * stored `displayOrder` wins.
+ */
 export const HOMEPAGE_SECTION_KEYS = [
     'hero',
     'quick_actions',
@@ -255,7 +265,18 @@ export const HOMEPAGE_SECTION_KEYS = [
     'guidance_tools',
     'trending',
     'ai_assistant',
+    'loan_promo',
     'whatsapp_community',
+    'featured_colleges',
+    'upcoming_dates',
+    'scholarships',
+    'student_reviews',
+    'latest_articles',
+    'counsellors',
+    'why_choose_us',
+    'explore_directory',
+    'faq',
+    'app_download',
     'platform_stats',
     'sticky_cta',
 ] as const;
