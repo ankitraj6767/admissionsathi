@@ -22,6 +22,61 @@ test.describe('homepage sections', () => {
         await expectSingleH1(page);
     });
 
+    /**
+     * Hero headline centring.
+     *
+     * `.hero-title` and the description are both width-capped, so `text-center` alone
+     * centres the text inside a box that stays pinned left. Asserting on the measured
+     * margins rather than on the class list is what actually catches that.
+     */
+    for (const width of [360, 390, 430, 768]) {
+        test(`centres the hero headline block at ${width}px`, async ({ page }) => {
+            await page.setViewportSize({ width, height: 1000 });
+            await gotoStable(page, '/');
+
+            const offsets = await page.evaluate(() => {
+                const column = document.querySelector('.hero-title-col');
+                if (!column) return null;
+
+                const columnBox = column.getBoundingClientRect();
+                const measure = (element: Element | null | undefined) => {
+                    if (!element) return null;
+                    const box = element.getBoundingClientRect();
+                    return {
+                        left: Math.round(box.left - columnBox.left),
+                        right: Math.round(columnBox.right - box.right),
+                    };
+                };
+
+                const paragraphs = column.querySelectorAll('p');
+                return {
+                    heading: measure(document.querySelector('#hero-heading')),
+                    description: measure(paragraphs[1]),
+                };
+            });
+
+            expect(offsets, 'expected the hero headline column to render').not.toBeNull();
+
+            // One pixel of slack absorbs sub-pixel rounding on odd widths.
+            expect(Math.abs(offsets!.heading!.left - offsets!.heading!.right)).toBeLessThanOrEqual(1);
+            if (offsets!.description) {
+                expect(
+                    Math.abs(offsets!.description.left - offsets!.description.right),
+                ).toBeLessThanOrEqual(1);
+            }
+        });
+    }
+
+    test('keeps the hero headline left-aligned on desktop', async ({ page }) => {
+        await page.setViewportSize({ width: 1280, height: 900 });
+        await gotoStable(page, '/');
+
+        const alignment = await page.evaluate(
+            () => getComputedStyle(document.querySelector('.hero-title-col')!).textAlign,
+        );
+        expect(alignment).toBe('left');
+    });
+
     for (const section of SECTIONS) {
         test(`links out to ${section.label} detail pages`, async ({ page }) => {
             await gotoStable(page, '/');

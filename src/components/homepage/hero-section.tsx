@@ -67,8 +67,14 @@ export function HeroSection({
                         so the left and centre blocks start and end on the same baselines.
                     */}
                     <div className="grid gap-5 self-start lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)] xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,460px)_minmax(0,1fr)]">
-                        {/* ---------------- Headline (row 1, col 1) ---------------- */}
-                        <div className="hero-title-col relative z-10 lg:col-start-1 lg:row-start-1">
+                        {/* ----------------- Headline (row 1, col 1) -----------------
+                            Centred below `lg`, where the headline sits above a full-width
+                            search card rather than beside the hero image. Both the heading
+                            and the description are width-capped (`.hero-title` sets
+                            `max-inline-size`, the description caps at 34ch), so they need
+                            auto inline margins as well as `text-center` — otherwise the text
+                            centres inside a box that is still pinned left. */}
+                        <div className="hero-title-col relative z-10 text-center lg:col-start-1 lg:row-start-1 lg:text-left">
                             {config.eyebrow ? (
                                 <p className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-navy-600">
                                     {config.eyebrow}
@@ -77,14 +83,14 @@ export function HeroSection({
 
                             <h1
                                 id="hero-heading"
-                                className="hero-title mt-2.5 font-display text-hero font-extrabold text-navy-800"
+                                className="hero-title mx-auto mt-2.5 font-display text-hero font-extrabold text-navy-800 lg:mx-0"
                             >
                                 {config.headingBeforeHighlight ?? hero.heading}{' '}
                                 <span className="text-orange">{config.highlightText ?? hero.subheading}</span>
                             </h1>
 
                             {hero.description ? (
-                                <p className="mt-3 max-w-[34ch] text-[13.5px] leading-relaxed text-ink-soft">
+                                <p className="mx-auto mt-3 max-w-[34ch] text-[13.5px] leading-relaxed text-ink-soft lg:mx-0">
                                     {hero.description}
                                 </p>
                             ) : null}
@@ -93,7 +99,10 @@ export function HeroSection({
                         {/* ---------------- Trust stats (row 2, col 1) ---------------- */}
                         {config.trustStats.length > 0 ? (
                             <div className="relative z-10 lg:col-start-1 lg:row-start-2">
-                                <div className="grid h-full max-w-md grid-cols-2 content-center gap-2.5 rounded-panel border border-line bg-white/90 p-3 shadow-card backdrop-blur sm:grid-cols-4 lg:max-w-none">
+                                {/* `mx-auto` keeps the capped card under the centred headline
+                                    on tablet, where `max-w-md` is narrower than the column;
+                                    from `lg` the cap is lifted and the card aligns left again. */}
+                                <div className="mx-auto grid h-full max-w-md grid-cols-2 content-center gap-2.5 rounded-panel border border-line bg-white/90 p-3 shadow-card backdrop-blur sm:grid-cols-4 lg:mx-0 lg:max-w-none">
                                     {config.trustStats.map((stat) => (
                                         <div key={stat.label} className="text-center">
                                             <span
