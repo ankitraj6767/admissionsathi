@@ -66,7 +66,13 @@ test.describe('responsive layout', () => {
             await expect(drawer).toBeVisible({ timeout: 1_000 });
         }).toPass({ timeout: 15_000 });
 
-        await page.getByRole('button', { name: /close menu/i }).first().click();
+        // Scope to the dialog's own close control. Two elements carry the "Close menu"
+        // label — the drawer's X button and the full-screen backdrop behind it — and
+        // `.first()` picks the backdrop, whose centre the drawer panel then intercepts.
+        await page
+            .getByRole('dialog', { name: /site menu/i })
+            .getByRole('button', { name: /close menu/i })
+            .click();
         await expect(drawer).toBeHidden();
     });
 

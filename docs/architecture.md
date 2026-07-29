@@ -594,6 +594,61 @@ The cost of a navigation is therefore whatever the page's uncached queries cost,
 
 Measured locally against Atlas with `next start`. Warm cache: homepage 23ms, `/colleges` 122ms (11ms to first byte), a college tab 19ms, `/predictors` 16ms. Cold process **and** empty data cache — the true first-visitor case: listing pages 16-23ms to first byte and 100-220ms complete, detail pages 190-490ms. Before this work the first request to a route cost 3-4s.
 
+## Homepage sections
+
+Twenty-two sections, all editable from `/admin/homepage`. Adding one is a four-file
+change and the fourth is easy to forget:
+
+1. `HOMEPAGE_SECTION_KEYS` in `src/config/constants.ts` — the enum the admin action
+   validates against.
+2. A config schema in `src/schemas/homepage.schema.ts`, registered in
+   `HOMEPAGE_CONFIG_SCHEMAS`.
+3. A draft in `src/config/homepage-defaults.ts`, which is both the bootstrap row and
+   the render-time fallback.
+4. A render slot in `src/app/(public)/page.tsx`.
+
+`loan_promo` is the cautionary tale: it existed as a `HomepageSection` row with none
+of the four, so it was listed in the builder, un-editable (the action's `z.enum`
+rejected its key) and never rendered — while the design it came from showed a card in
+that slot, leaving visible dead space in the right rail.
+`tests/unit/config/homepage-sections.test.ts` now fails the build on that drift: it
+asserts the enum, the schema map and the draft list agree in both directions, that
+display orders are unique, and that every packaged draft config parses against its
+own schema.
+
+### Data loading
+
+Section content lives in `src/services/home-data.service.ts`. Every loader is
+`cached()` and tagged with whatever an editor would change, so a warm homepage costs
+no database round trips however many sections are on. Two rules the loaders follow:
+
+- **A disabled section costs nothing.** `page.tsx` passes `Promise.resolve([])` for
+  sections that are off, so turning one off in the builder removes its query as well
+  as its markup.
+- **Failure degrades to empty.** Each loader catches and returns `[]`, and each
+  section returns `null` for an empty list. One unavailable collection cannot take the
+  homepage down, and no heading is ever left with nothing under it.
+
+Where an editor can pin explicit records (`collegeSlugs`, `scholarshipSlugs`,
+`counsellorSlugs`) the explicit list wins over the `isFeatured` flag and keeps the
+editor's ordering. Where a filter could match nothing — featured-only articles, key
+dates only — the loader falls back to the unfiltered list rather than rendering a bare
+heading.
+
+### The grid trap these sections hit twice
+
+Tailwind's column utilities are `repeat(n, minmax(0, 1fr))`, but a grid with only
+responsive column classes falls back to the **implicit** `auto` track at the base
+width, and `auto` will not shrink below its content's min-content size. A card
+containing `truncate` text (which is `white-space: nowrap`) therefore sets a minimum
+width from its longest line and pushes the page sideways at 390px. Every card grid
+declares `grid-cols-1` explicitly for that reason, and truncating text inside a flex
+row needs `min-w-0` on the flex item as well.
+
+Related: card meta rows use `<div>`, not `<footer>`. A `<footer>` inside an
+`<article>` is valid HTML, but it makes `page.locator('footer').first()` resolve to a
+card rather than the site footer, which silently broke a footer spec.
+
 ## Homepage CMS section-key contract
 
 Three pieces must agree on the same key:

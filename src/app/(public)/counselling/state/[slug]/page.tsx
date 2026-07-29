@@ -161,7 +161,7 @@ export default async function CounsellingByStatePage({ params }: { params: Promi
                                         </div>
                                         <Link
                                             href={`/book-counselling?counsellor=${counsellor.slug}&state=${state.slug}`}
-                                            className="mt-auto inline-flex h-9 items-center justify-center rounded-[9px] bg-navy px-3 pt-3 text-[12px] font-bold text-white hover:bg-navy-800"
+                                            className="mt-auto inline-flex h-9 items-center justify-center rounded-[9px] bg-navy px-3 text-[12px] font-bold text-white hover:bg-navy-800"
                                         >
                                             Book a session
                                         </Link>
