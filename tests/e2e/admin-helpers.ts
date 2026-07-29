@@ -1,3 +1,5 @@
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { expect, type Page, type TestInfo } from '@playwright/test';
 import { gotoStable } from './helpers';
 
@@ -38,24 +40,82 @@ export async function signIn(page: Page, email: string, password: string): Promi
 }
 
 /**
+ * Where the reusable admin session cookies are cached between tests.
+ *
+ * `loginAction` rate-limits to ten attempts per email per fifteen minutes — brute
+ * force protection we deliberately want in production. Signing in once per test
+ * exhausts that budget partway through the admin suite and the rest of the specs
+ * skip, so the session is captured once and replayed instead.
+ */
+const SESSION_CACHE = join(process.cwd(), 'test-results', '.auth', 'admin-session.json');
+
+interface CachedCookie {
+    name: string;
+    value: string;
+    domain: string;
+    path: string;
+    expires: number;
+    httpOnly: boolean;
+    secure: boolean;
+    sameSite: 'Strict' | 'Lax' | 'None';
+}
+
+function readCachedCookies(): CachedCookie[] | null {
+    try {
+        const cookies = JSON.parse(readFileSync(SESSION_CACHE, 'utf8')) as CachedCookie[];
+        // A session cookie has `expires: -1`; anything dated must still be in future.
+        const usable = cookies.filter((cookie) => cookie.expires === -1 || cookie.expires * 1000 > Date.now());
+        return usable.length > 0 ? usable : null;
+    } catch {
+        return null;
+    }
+}
+
+function writeCachedCookies(cookies: CachedCookie[]): void {
+    try {
+        mkdirSync(dirname(SESSION_CACHE), { recursive: true });
+        writeFileSync(SESSION_CACHE, JSON.stringify(cookies), 'utf8');
+    } catch {
+        // Caching is an optimisation; a failure here just means another login.
+    }
+}
+
+/** True when the current context can open /admin. */
+async function canReachAdmin(page: Page): Promise<boolean> {
+    await gotoStable(page, '/admin');
+    return new URL(page.url()).pathname === '/admin';
+}
+
+/**
  * Signs in as the seeded super admin, or skips the test.
- * Skipping (rather than failing) keeps the suite meaningful on a machine without
- * a seeded MongoDB while still exercising the real flow in CI.
+ *
+ * Skipping (rather than failing) keeps the suite meaningful on a machine without a
+ * seeded MongoDB while still exercising the real login flow in CI. The first call
+ * in a run performs a real credentials login; later calls replay its cookies, and
+ * only fall back to a fresh login if the replayed session no longer works.
  */
 export async function signInAsAdmin(page: Page, testInfo: TestInfo): Promise<void> {
+    const cached = readCachedCookies();
+    if (cached) {
+        await page.context().addCookies(cached);
+        if (await canReachAdmin(page)) return;
+        await page.context().clearCookies();
+    }
+
     const result = await signIn(page, ADMIN_EMAIL, ADMIN_PASSWORD);
 
     if (!result.signedIn) {
         testInfo.skip(
             true,
-            `Could not sign in as ${ADMIN_EMAIL}. Run \`npm run db:seed\` against a reachable MongoDB first.`,
+            `Could not sign in as ${ADMIN_EMAIL}. Run \`npm run db:seed\` against a reachable MongoDB first, and note that login is rate-limited to 10 attempts per 15 minutes.`,
         );
     }
 
-    await gotoStable(page, '/admin');
-    if (new URL(page.url()).pathname !== '/admin') {
+    if (!(await canReachAdmin(page))) {
         testInfo.skip(true, 'Signed-in account cannot reach /admin — reseed the demo staff users.');
     }
+
+    writeCachedCookies((await page.context().cookies()) as CachedCookie[]);
 }
 
 /** Fills a labelled admin form field when it exists, ignoring optional ones. */

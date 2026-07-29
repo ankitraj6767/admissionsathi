@@ -4,6 +4,8 @@ import { AdminPageHeader } from '@/components/admin/admin-page-header';
 import { SectionCard } from '@/components/shared/content-blocks';
 import { Badge } from '@/components/ui/primitives';
 import { getSeoInventory } from '@/services/admin/dashboard.service';
+import { LinkHealthPanel } from '@/components/admin/link-health-panel';
+import { getLinkHealthReport } from '@/services/link-health.service';
 import { requirePermissionPage } from '@/lib/auth/session';
 import { siteConfig } from '@/config/site';
 
@@ -14,7 +16,10 @@ export const metadata: Metadata = { title: 'SEO' };
 export default async function AdminSeoPage() {
     await requirePermissionPage('seo.manage');
 
-    const { published, redirects, health } = await getSeoInventory();
+    const [{ published, redirects, health }, linkHealth] = await Promise.all([
+        getSeoInventory(),
+        getLinkHealthReport().catch(() => null),
+    ]);
     const { colleges, courses, exams, articles } = published;
     const { missingCollegeSeo, missingArticleSeo, noIndexed } = health;
 
@@ -119,6 +124,21 @@ export default async function AdminSeoPage() {
                             <li key={schema}>{schema}</li>
                         ))}
                     </ul>
+                </SectionCard>
+
+                <SectionCard
+                    title="Internal link health"
+                    icon="Link2"
+                    description="Links stored in articles, news, pages, menus and redirects, resolved against live routes."
+                    className="lg:col-span-2"
+                >
+                    {linkHealth ? (
+                        <LinkHealthPanel report={linkHealth} />
+                    ) : (
+                        <p className="text-[12.5px] text-ink-soft">
+                            The link scan could not run. Check the database connection and try again.
+                        </p>
+                    )}
                 </SectionCard>
             </div>
         </>

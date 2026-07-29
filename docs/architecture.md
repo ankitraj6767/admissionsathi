@@ -341,7 +341,8 @@ Sharding by entity keeps every file far inside the 50,000-URL / 50 MB limit (`SH
 | `scholarships` | `/sitemaps/scholarships.xml` | `/scholarships/[slug]` |
 | `finance` | `/sitemaps/finance.xml` | `/education-loans/[providerSlug]` |
 | `counsellors` | `/sitemaps/counsellors.xml` | `/counsellors/[slug]` |
-| `locations` | `/sitemaps/locations.xml` | `/colleges/state/[slug]`, `/colleges/city/[slug]` (cities with `collegeCount > 0` only), `/colleges/course/[slug]` (courses at least one college offers, first 2,000) |
+| `locations` | `/sitemaps/locations.xml` | `/colleges/state/[slug]`, `/counselling/state/[slug]`, `/colleges/city/[slug]` (cities with `collegeCount > 0` only), `/colleges/course/[slug]` (courses at least one college offers, first 2,000) |
+| `taxonomy` | `/sitemaps/taxonomy.xml` | `/courses/level/[slug]`, `/exams/category/[slug]`, `/colleges/exam/[slug]`, `/scholarships/course/[slug]` |
 | `pages` | `/sitemaps/pages.xml` | Published `StaticPage` slugs |
 
 Rules the implementation enforces:
@@ -353,6 +354,48 @@ Rules the implementation enforces:
 - **Degradation is explicit**: a database failure logs `sitemap.shard_failed` and returns the static route list (for the `static` shard) or an empty shard. Crawlers treat repeated 5xx responses as a signal to slow down, so an empty sitemap is preferred over an error.
 
 `robots.ts` advertises `Sitemap: <origin>/sitemap.xml`, and that URL now resolves to the index, which links every child. Search Console needs only the index submitted.
+
+### SEO landing pages and their directory indexes
+
+Landing pages come in two flavours, and the difference decides where their slugs come from.
+
+**Record-backed** landings resolve a slug against a collection, so they only exist while the record is published: `/colleges/state/[slug]`, `/colleges/city/[slug]`, `/colleges/course/[slug]`, `/colleges/exam/[slug]`, `/courses/category/[slug]`, `/scholarships/course/[slug]`, `/counselling/state/[slug]`.
+
+**Enum-backed** landings group rows by a stored enum rather than a referenced document, so there is no slug column to look up: `/courses/level/[slug]` and `/exams/category/[slug]`. Their slugs are derived in `src/config/taxonomy.ts` from `COURSE_LEVELS` and `EXAM_CATEGORIES`, which keeps route, page copy and sitemap in step — adding a level to `constants.ts` publishes its landing page. Both use `generateStaticParams()`, and an unknown slug is a real `notFound()` rather than an empty listing.
+
+Every `/[slug]` family has a matching index page (`/colleges/exam`, `/courses/level`, `/exams/category`, `/scholarships/course`, `/counselling/state`, …), for two reasons:
+
+1. **Routing.** A static segment only wins over a sibling dynamic route when it resolves. Without `/exams/category/page.tsx`, the path `/exams/category` would fall through to `/exams/[slug]` with `slug = "category"` and soft-404.
+2. **Crawlability.** The indexes are linked from the footer (`DIRECTORY_LINKS` in `site-footer.tsx`), so every landing page is reachable from any page rather than from the sitemap alone.
+
+Indexes only link targets that will have content — `/colleges/course` lists courses at least one college offers, `/scholarships/course` lists courses a published scholarship targets — so the site never advertises a thin page.
+
+### Internal link health (`src/services/link-health.service.ts`)
+
+A monitoring structure rather than a crawler. It reads every internal href stored in published articles, news posts, static pages, active navigation items and redirect destinations, then resolves each against the routes the app serves and the slugs that exist. No outbound HTTP is issued, which is what makes it cheap enough to run from `/admin/seo` on demand; external links are counted and reported as unchecked.
+
+The resolution logic lives in `src/lib/seo/link-resolver.ts` — free of `server-only` and database imports so it is directly unit-testable, taking the slug sets as an argument. The service supplies those sets, caps each scan at 500 rows per collection and reports `truncated` when it hits that cap. `getLinkHealthReport` is cached for an hour; `rescanLinkHealthAction` (permission `seo.manage`) forces a fresh scan and invalidates the `link-health` tag.
+
+## Lead CRM (`/admin/leads`)
+
+The lead pipeline is the one admin screen that is not driven by the generic resource registry, because a CRM needs a board, a timeline and granular permissions that the registry's CRUD form cannot express.
+
+| Piece | File |
+| --- | --- |
+| Board / table / detail / analytics reads | `src/services/admin/lead-admin.service.ts` |
+| Mutations | `src/actions/admin/lead.actions.ts` |
+| Aggregations | `leadBoardColumns`, `leadCountsByCounsellor`, `listLeadsForExport` in `src/db/repositories/lead.repository.ts` |
+| Stage labels and tones | `src/config/lead-board.ts` |
+
+Points worth knowing:
+
+- **Board columns follow `LEAD_STATUSES`, not the aggregation.** `leadBoardColumns` groups with `$group` + `$slice` so each column is capped at 25 rows while the count stays exact; the service then re-orders to lifecycle order and keeps empty stages present so the board never collapses.
+- **Every change writes its own activity row.** `applyLeadWorkflow` takes an all-optional patch — the same action backs the board's drag-and-drop (status only), the assignment dropdown and the full detail form — and records a `status_change`, `assignment`, `call`, `follow_up` or `note` entry per change. The timeline is therefore an audit trail, not a diff of the current document.
+- **Clearing an assignment uses `$unset`.** `$set: { field: undefined }` is a no-op in MongoDB and silently leaves the old counsellor in place, so `updateLead` takes an explicit `unset` list.
+- **Assignment is a separate permission.** `lead.update` covers stage, priority, follow-up and notes; reassigning requires `lead.assign` and exporting requires `lead.export`. The actions check each independently, and the workflow form only sends `assignedTo` when the actor may change it.
+- **Counsellor load stays honest.** Assigning increments the new counsellor's `activeLeadCount` and decrements the previous one, so the round-robin in `pickCounsellorForAssignment` does not drift.
+- **The CSV export goes through a Server Action, not a file URL**, so it sits behind the same permission check as every mutation, is audited, is capped at 5,000 projected rows, and never includes the consent IP hash. Cells are quote-escaped and values starting `= + - @` are prefixed with an apostrophe to defuse spreadsheet formula injection.
+- **Drag-and-drop is native HTML DnD** with a status `<select>` on every card, so the board is fully operable from the keyboard.
 
 ## Auth and RBAC flow
 

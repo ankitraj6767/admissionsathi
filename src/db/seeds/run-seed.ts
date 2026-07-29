@@ -82,7 +82,7 @@ async function main() {
     console.log('\n▸ Modules');
     await seedPredictors(adminId, { examIdBySlug });
     await seedFinance(adminId, { courseIdBySlug, stateIdBySlug });
-    await seedCounsellors(adminId, { categoryIdBySlug });
+    await seedCounsellors(adminId, { categoryIdBySlug, stateIdBySlug });
     await seedContent(adminId, { examIdBySlug, collegeIdBySlug, courseIdBySlug, stateIdBySlug });
     await seedSampleLeads(adminId);
 

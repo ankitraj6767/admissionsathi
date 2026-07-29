@@ -65,6 +65,25 @@ export async function getCounsellorById(id: string): Promise<CounsellorDoc | nul
  * Round-robin-ish assignment: picks the accepting counsellor with the fewest
  * active leads, preferring a category/state match when provided.
  */
+/**
+ * Counsellors who cover a given state.
+ *
+ * Falls back to the general active list when nobody is scoped to that state, so
+ * the state counselling page always shows someone a student can actually book.
+ */
+export async function listCounsellorsForState(
+    stateId: string,
+    limit = 6,
+): Promise<CounsellorDoc[]> {
+    const scoped = await findLean<CounsellorDoc>(
+        Counsellor,
+        { status: 'active', focusStates: stateId } as FilterQuery<CounsellorDoc>,
+        { sort: { displayOrder: 1, 'rating.average': -1 }, limit },
+    );
+    if (scoped.length > 0) return scoped;
+    return listCounsellors({ limit });
+}
+
 export async function pickCounsellorForAssignment(hint?: {
     categoryId?: string;
     stateId?: string;

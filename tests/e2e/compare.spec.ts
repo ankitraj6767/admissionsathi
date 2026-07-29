@@ -9,15 +9,21 @@ test.describe('compare colleges', () => {
         await expectSingleH1(page);
         await expect(page.locator('main')).toBeVisible();
 
-        const tableCount = await page.locator('main table').count();
-        const body = (await page.locator('main').innerText()).toLowerCase();
+        // The comparison streams in behind a Suspense boundary, so poll rather than
+        // reading `main` once and catching the skeleton.
+        await expect
+            .poll(async () => {
+                if ((await page.locator('main table').count()) > 0) return 'table';
+                const text = (await page.locator('main').innerText()).toLowerCase();
+                return /add|select|choose|compare|no college/.test(text) ? 'empty-state' : text;
+            })
+            .toMatch(/^(table|empty-state)$/);
 
-        if (tableCount > 0) {
+        if ((await page.locator('main table').count()) > 0) {
             await expect(page.locator('main table').first()).toBeVisible();
-        } else {
-            expect(body).toMatch(/add|select|choose|compare|no college/);
         }
-        expect(body).not.toContain('application error');
+
+        expect((await page.locator('main').innerText()).toLowerCase()).not.toContain('application error');
     });
 
     test('preselected slugs in the URL do not break the page', async ({ page }) => {

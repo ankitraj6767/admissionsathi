@@ -47,8 +47,13 @@ test.describe('search', () => {
         await gotoStable(page, '/search?q=zzzznotarealcollegezzzz');
 
         await expect(page.locator('main')).toBeVisible();
-        const body = (await page.locator('main').innerText()).toLowerCase();
-        expect(body).toMatch(/no |not found|nothing|try|0 result|didn.t find/);
+        // Results stream in behind a Suspense boundary, so wait for the fallback to
+        // be replaced before reading the copy — otherwise this asserts on "Loading…".
+        await expect(page.getByText(/loading search results/i)).toHaveCount(0);
+
+        await expect
+            .poll(async () => (await page.locator('main').innerText()).toLowerCase())
+            .toMatch(/no |not found|nothing|try|0 result|didn.t find/);
     });
 
     test('an empty query still renders the search page', async ({ page }) => {

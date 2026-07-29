@@ -18,12 +18,14 @@ import {
 } from '@/db/repositories/course.repository';
 import { listExamSitemapSlugs } from '@/db/repositories/exam.repository';
 import {
+    distinctScholarshipCourseIds,
     listLoanProviderSitemapSlugs,
     listScholarshipSitemapSlugs,
 } from '@/db/repositories/finance.repository';
 import { listCitySitemapSlugs, listStateSitemapSlugs } from '@/db/repositories/geo.repository';
 import { listPredictorSitemapSlugs } from '@/db/repositories/predictor.repository';
 import { listStaticPageSitemapSlugs } from '@/db/repositories/site.repository';
+import { COURSE_LEVEL_LANDINGS, EXAM_CATEGORY_LANDINGS } from '@/config/taxonomy';
 import { CACHE_TAGS, CACHE_TTL, cached } from '@/lib/cache';
 import { logger } from '@/lib/logger';
 
@@ -58,6 +60,7 @@ export const SITEMAP_SHARDS = [
     'finance',
     'counsellors',
     'locations',
+    'taxonomy',
     'pages',
 ] as const;
 
@@ -76,8 +79,16 @@ const STATIC_ROUTES: { path: string; priority: number; changeFrequency: SitemapE
     { path: '/', priority: 1, changeFrequency: 'daily' },
     { path: '/colleges', priority: 0.9, changeFrequency: 'daily' },
     { path: '/colleges/state', priority: 0.6, changeFrequency: 'weekly' },
+    { path: '/colleges/city', priority: 0.6, changeFrequency: 'weekly' },
+    { path: '/colleges/course', priority: 0.6, changeFrequency: 'weekly' },
+    { path: '/colleges/exam', priority: 0.6, changeFrequency: 'weekly' },
     { path: '/courses', priority: 0.9, changeFrequency: 'daily' },
+    { path: '/courses/category', priority: 0.6, changeFrequency: 'weekly' },
+    { path: '/courses/level', priority: 0.6, changeFrequency: 'weekly' },
     { path: '/exams', priority: 0.9, changeFrequency: 'daily' },
+    { path: '/exams/category', priority: 0.6, changeFrequency: 'weekly' },
+    { path: '/scholarships/course', priority: 0.6, changeFrequency: 'weekly' },
+    { path: '/counselling/state', priority: 0.6, changeFrequency: 'weekly' },
     { path: '/predictors', priority: 0.9, changeFrequency: 'weekly' },
     { path: '/compare-colleges', priority: 0.7, changeFrequency: 'weekly' },
     { path: '/college-reviews', priority: 0.6, changeFrequency: 'daily' },
@@ -307,12 +318,20 @@ async function loadShard(shard: SitemapShard): Promise<SitemapEntry[]> {
             ]);
 
             return [
-                ...states.map((row) => ({
-                    url: `/colleges/state/${row.slug}`,
-                    lastModified: row.updatedAt ?? now,
-                    changeFrequency: 'weekly' as const,
-                    priority: 0.6,
-                })),
+                ...states.flatMap((row) => [
+                    {
+                        url: `/colleges/state/${row.slug}`,
+                        lastModified: row.updatedAt ?? now,
+                        changeFrequency: 'weekly' as const,
+                        priority: 0.6,
+                    },
+                    {
+                        url: `/counselling/state/${row.slug}`,
+                        lastModified: row.updatedAt ?? now,
+                        changeFrequency: 'monthly' as const,
+                        priority: 0.5,
+                    },
+                ]),
                 ...cities.map((row) => ({
                     url: `/colleges/city/${row.slug}`,
                     lastModified: row.updatedAt ?? now,
@@ -324,6 +343,45 @@ async function loadShard(shard: SitemapShard): Promise<SitemapEntry[]> {
                     lastModified: now,
                     changeFrequency: 'weekly' as const,
                     priority: 0.6,
+                })),
+            ];
+        }
+
+        case 'taxonomy': {
+            // Enum-backed landings (`/courses/level`, `/exams/category`) plus the
+            // exam- and course-scoped landings that depend on a published record.
+            const [exams, scholarshipCourseSlugs] = await Promise.all([
+                listExamSitemapSlugs(SHARD_LIMIT),
+                (async () => {
+                    const courseIds = await distinctScholarshipCourseIds();
+                    return listCourseSlugsByIds(courseIds, 2_000);
+                })(),
+            ]);
+
+            return [
+                ...COURSE_LEVEL_LANDINGS.map((entry) => ({
+                    url: `/courses/level/${entry.slug}`,
+                    lastModified: now,
+                    changeFrequency: 'weekly' as const,
+                    priority: 0.6,
+                })),
+                ...EXAM_CATEGORY_LANDINGS.map((entry) => ({
+                    url: `/exams/category/${entry.slug}`,
+                    lastModified: now,
+                    changeFrequency: 'weekly' as const,
+                    priority: 0.6,
+                })),
+                ...exams.map((row) => ({
+                    url: `/colleges/exam/${row.slug}`,
+                    lastModified: row.updatedAt ?? now,
+                    changeFrequency: 'weekly' as const,
+                    priority: 0.6,
+                })),
+                ...scholarshipCourseSlugs.map((slug) => ({
+                    url: `/scholarships/course/${slug}`,
+                    lastModified: now,
+                    changeFrequency: 'monthly' as const,
+                    priority: 0.5,
                 })),
             ];
         }

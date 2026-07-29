@@ -13,6 +13,7 @@ import { LoanCalculation, type LoanCalculationDoc } from '@/db/models/system.mod
 import { Course, type CourseDoc } from '@/db/models/course.model';
 import { escapeRegex } from '@/lib/utils';
 import {
+    distinctLean,
     findLean,
     findOneLean,
     listSlugRows,
@@ -195,6 +196,18 @@ export async function listScholarshipsForState(
         } as FilterQuery<ScholarshipDoc>,
         { limit, sort: { isFeatured: -1, applicationDeadline: 1 } },
     );
+}
+
+/**
+ * Course ids referenced by at least one published scholarship.
+ *
+ * Drives `/scholarships/course` and its sitemap entries, so a course-scoped
+ * landing page is only ever published when it will have results.
+ */
+export async function distinctScholarshipCourseIds(): Promise<unknown[]> {
+    return distinctLean<ScholarshipDoc, unknown>(Scholarship, 'targetCourses', {
+        status: 'published',
+    } as FilterQuery<ScholarshipDoc>);
 }
 
 /** Resolves a course slug to its id — used when filtering scholarships by course. */

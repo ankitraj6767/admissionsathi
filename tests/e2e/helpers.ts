@@ -39,6 +39,42 @@ export async function expectNoHorizontalOverflow(page: Page, label = '') {
     ).toBeLessThanOrEqual(overflow.clientWidth + 1);
 }
 
+/**
+ * Asserts that a deliberate horizontal scroller keeps its overflow to itself.
+ *
+ * `expectNoHorizontalOverflow` compares `documentElement.scrollWidth`, which
+ * Chromium over-reports on any page containing a nested horizontal scroller — the
+ * document still cannot be scrolled sideways, because `body` clips it. For screens
+ * built around a rail (the admin lead board, wide data tables) assert the real
+ * invariant instead: the rail scrolls, and the page does not.
+ */
+export async function expectContainedHorizontalScroll(page: Page, selector: string, label = '') {
+    const result = await page.evaluate((sel) => {
+        const rail = document.querySelector<HTMLElement>(sel);
+        if (!rail) return null;
+
+        window.scrollTo(2000, 0);
+        const pageScrolledBy = window.scrollX;
+        window.scrollTo(0, 0);
+
+        return {
+            railClientWidth: rail.clientWidth,
+            railScrollWidth: rail.scrollWidth,
+            pageScrolledBy,
+            viewportWidth: document.documentElement.clientWidth,
+        };
+    }, selector);
+
+    expect(result, `${label} expected to find a scroller matching ${selector}`).not.toBeNull();
+
+    expect(
+        result!.railClientWidth,
+        `${label} the rail should be no wider than the viewport`,
+    ).toBeLessThanOrEqual(result!.viewportWidth);
+
+    expect(result!.pageScrolledBy, `${label} the page itself must not scroll sideways`).toBe(0);
+}
+
 /** Every page must expose exactly one first-level heading. */
 export async function expectSingleH1(page: Page) {
     await expect(page.locator('h1')).toHaveCount(1);

@@ -217,6 +217,24 @@ export async function listCourseSlugsByIds(ids: unknown[], limit: number): Promi
     return rows.map((row) => row.slug).filter((slug): slug is string => Boolean(slug));
 }
 
+/**
+ * Published courses for a set of ids, with just enough fields to render a
+ * directory tile. Used by `/scholarships/course` so the index only links to
+ * courses that actually have a scholarship mapped to them.
+ */
+export async function listCourseOptionsByIds(ids: unknown[], limit = 200): Promise<CourseDoc[]> {
+    if (ids.length === 0) return [];
+    return findLean<CourseDoc>(
+        Course,
+        { _id: { $in: ids }, ...SITEMAP_FILTER } as FilterQuery<CourseDoc>,
+        {
+            sort: { displayOrder: 1, name: 1 },
+            limit,
+            projection: { name: 1, shortName: 1, slug: 1, categoryName: 1, level: 1 },
+        },
+    );
+}
+
 /** Best-effort page-view counter. */
 export async function incrementCourseViewCount(id: string): Promise<void> {
     await connectToDatabase();

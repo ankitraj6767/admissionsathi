@@ -55,12 +55,21 @@ import {
     updateResourceAction,
 } from '@/actions/admin/crud.actions';
 import { datasetStateAction, importCutoffDatasetAction } from '@/actions/admin/cutoff.actions';
+import {
+    bulkUpdateLeadsAction,
+    createLeadAction,
+    exportLeadsAction,
+    updateLeadWorkflowAction,
+} from '@/actions/admin/lead.actions';
+import { rescanLinkHealthAction } from '@/actions/admin/seo.actions';
 import { updateRolePermissionsAction } from '@/actions/admin/role.actions';
 import { updateSettingsAction } from '@/actions/admin/settings.actions';
 import { moderateReviewAction } from '@/actions/review.actions';
 import { College } from '@/db/models/college.model';
 import { Review } from '@/db/models/content.model';
+import { Counsellor } from '@/db/models/counselling.model';
 import { State } from '@/db/models/geo.model';
+import { Lead, LeadActivity } from '@/db/models/lead.model';
 import { Cutoff, Predictor, PredictorDataset } from '@/db/models/predictor.model';
 import { Role } from '@/db/models/role.model';
 import { SiteSetting } from '@/db/models/site.model';
@@ -547,5 +556,168 @@ describe('review.actions.moderateReviewAction — review.moderate', () => {
             count: 1,
         });
         expect(await AuditLog.countDocuments({ action: 'review.moderate' })).toBe(1);
+    });
+});
+
+describe('admin/lead.actions — lead.update, lead.assign, lead.export', () => {
+    const SUPPORT_AGENT = actorFor(['support_agent'], 'Sam Support');
+    const LEAD_MANAGER = actorFor(['lead_manager'], 'Lata Leads');
+    const ANALYST = actorFor(['analyst'], 'Anil Analyst');
+
+    let leadCounter = 0;
+
+    async function seedLead() {
+        leadCounter += 1;
+        const phone = `98761${String(10_000 + leadCounter)}`;
+        return Lead.create({
+            reference: `AS2607${String(leadCounter).padStart(5, '0')}`,
+            name: 'Aarav Sharma',
+            phone,
+            phoneNormalized: phone.slice(-10),
+            source: 'homepage_counselling_form',
+            status: 'new',
+            priority: 'medium',
+            consent: { given: true, givenAt: new Date() },
+        });
+    }
+
+    async function seedCounsellor() {
+        return Counsellor.create({
+            name: 'Neha Kulkarni',
+            slug: `neha-${new Types.ObjectId()}`,
+            email: `neha-${new Types.ObjectId()}@example.com`,
+            status: 'active',
+            isAcceptingLeads: true,
+            freeSessionMinutes: 30,
+            maxDailyBookings: 8,
+        });
+    }
+
+    beforeEach(() => {
+        session.actor = null;
+    });
+
+    it('refuses an anonymous stage change', async () => {
+        const lead = await seedLead();
+
+        const result = await updateLeadWorkflowAction({ id: String(lead._id), status: 'contacted' });
+
+        expect(refusalCode(result)).toBe('UNAUTHENTICATED');
+        expect((await Lead.findById(lead._id).lean())?.status).toBe('new');
+    });
+
+    it('refuses an analyst, who may read leads but not change them', async () => {
+        const lead = await seedLead();
+        session.actor = ANALYST;
+
+        const result = await updateLeadWorkflowAction({ id: String(lead._id), status: 'contacted' });
+
+        expect(refusalCode(result)).toBe('FORBIDDEN');
+        expect((await Lead.findById(lead._id).lean())?.status).toBe('new');
+        expect(await LeadActivity.countDocuments({})).toBe(0);
+    });
+
+    it('lets a support agent move a lead through the pipeline', async () => {
+        const lead = await seedLead();
+        session.actor = SUPPORT_AGENT;
+
+        const result = await updateLeadWorkflowAction({ id: String(lead._id), status: 'contacted' });
+
+        expect(result.ok).toBe(true);
+        expect((await Lead.findById(lead._id).lean())?.status).toBe('contacted');
+    });
+
+    it('refuses a support agent reassigning a lead — assignment is its own permission', async () => {
+        const lead = await seedLead();
+        const counsellor = await seedCounsellor();
+        session.actor = SUPPORT_AGENT;
+
+        const result = await updateLeadWorkflowAction({
+            id: String(lead._id),
+            assignedTo: String(counsellor._id),
+        });
+
+        expect(refusalCode(result)).toBe('FORBIDDEN');
+        expect((await Lead.findById(lead._id).lean())?.assignedTo).toBeUndefined();
+        expect((await Counsellor.findById(counsellor._id).lean())?.activeLeadCount).toBe(0);
+    });
+
+    it('lets a lead manager assign a counsellor', async () => {
+        const lead = await seedLead();
+        const counsellor = await seedCounsellor();
+        session.actor = LEAD_MANAGER;
+
+        const result = await updateLeadWorkflowAction({
+            id: String(lead._id),
+            assignedTo: String(counsellor._id),
+        });
+
+        expect(result.ok).toBe(true);
+        expect((await Lead.findById(lead._id).lean())?.assignedToName).toBe('Neha Kulkarni');
+    });
+
+    it('refuses a bulk assignment without lead.assign', async () => {
+        const lead = await seedLead();
+        const counsellor = await seedCounsellor();
+        session.actor = SUPPORT_AGENT;
+
+        const result = await bulkUpdateLeadsAction({
+            ids: [String(lead._id)],
+            assignedTo: String(counsellor._id),
+        });
+
+        expect(refusalCode(result)).toBe('FORBIDDEN');
+        expect((await Lead.findById(lead._id).lean())?.assignedTo).toBeUndefined();
+    });
+
+    it('refuses a CSV export without lead.export, so lead data cannot leak', async () => {
+        await seedLead();
+        session.actor = SUPPORT_AGENT;
+
+        const result = await exportLeadsAction({});
+
+        expect(refusalCode(result)).toBe('FORBIDDEN');
+        expect(await AuditLog.countDocuments({ action: 'lead.export' })).toBe(0);
+    });
+
+    it('lets a lead manager export and records the export in the audit log', async () => {
+        await seedLead();
+        session.actor = LEAD_MANAGER;
+
+        const result = await exportLeadsAction({});
+
+        expect(result.ok).toBe(true);
+        expect(await AuditLog.countDocuments({ action: 'lead.export' })).toBe(1);
+    });
+
+    it('refuses manual lead creation without lead.create', async () => {
+        session.actor = SUPPORT_AGENT;
+
+        const result = await createLeadAction({
+            name: 'Kabir Rao',
+            phone: '9876500009',
+            source: 'admin_manual',
+            priority: 'medium',
+        });
+
+        expect(refusalCode(result)).toBe('FORBIDDEN');
+        expect(await Lead.countDocuments({})).toBe(0);
+    });
+});
+
+describe('admin/seo.actions.rescanLinkHealthAction — seo.manage', () => {
+    it('refuses an anonymous scan', async () => {
+        session.actor = null;
+        expect(refusalCode(await rescanLinkHealthAction())).toBe('UNAUTHENTICATED');
+    });
+
+    it('refuses a content editor, who cannot manage SEO', async () => {
+        session.actor = CONTENT_EDITOR;
+        expect(refusalCode(await rescanLinkHealthAction())).toBe('FORBIDDEN');
+    });
+
+    it('lets a content manager run the scan', async () => {
+        session.actor = CONTENT_MANAGER;
+        expect((await rescanLinkHealthAction()).ok).toBe(true);
     });
 });

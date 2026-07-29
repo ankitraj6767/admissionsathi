@@ -72,25 +72,55 @@ tests/
 │       └── jsdom-environment.test.tsx    # jsdom + Testing Library example
 ├── integration/
 │   ├── setup.ts                          # starts an in-memory MongoDB, wipes between tests
-│   ├── authorization.test.ts             # server-side RBAC across five action modules
+│   ├── authorization.test.ts             # server-side RBAC across seven action modules
 │   ├── repositories/                     # base, college, content, geo, lead, system
-│   ├── services/                         # predictor, review, saved, search
+│   ├── services/                         # lead-admin, predictor, review, saved, search
 │   └── actions/                          # lead, saved, admin-crud
 └── e2e/
     ├── helpers.ts                        # shared assertions and breakpoints
-    ├── admin-helpers.ts                  # sign-in + admin form helpers
+    ├── admin-helpers.ts                  # sign-in (session-cached) + admin form helpers
     ├── home.spec.ts
     ├── search.spec.ts
     ├── colleges.spec.ts
     ├── compare.spec.ts
     ├── predictor.spec.ts
     ├── counselling.spec.ts
+    ├── seo-landing-pages.spec.ts
     ├── auth.spec.ts
     ├── admin-workflows.spec.ts
+    ├── admin-leads.spec.ts
     ├── mobile-drawer.spec.ts
     ├── accessibility.spec.ts
     └── responsive.spec.ts
 ```
+
+### Two traps the E2E specs are written around
+
+**Login is rate-limited.** `loginAction` allows ten attempts per email per fifteen
+minutes. Signing in per test exhausts that partway through the admin suite and the
+rest silently skip, which looks like passing. `signInAsAdmin` therefore performs one
+real credentials login per run, caches the cookies under
+`test-results/.auth/admin-session.json`, replays them for later tests, and only falls
+back to a fresh login when the replayed session stops working.
+
+**Clicks before hydration are dropped.** Interactive controls are Client Components,
+so a click that lands before hydration does nothing and the assertion that follows
+times out — a race that passes or fails on bundle size and machine speed. Specs that
+drive a client control wrap the interaction in `expect(async () => { … }).toPass()`
+so the click is retried, and prefer `expect(page).toHaveURL()` over `waitForURL()`
+for client-side navigations, whose default `load` event never fires. Where the
+retried action is not naturally idempotent (changing a lead's stage), the target is
+recomputed inside the retry.
+
+### Measuring horizontal overflow
+
+`expectNoHorizontalOverflow` compares `documentElement.scrollWidth` against
+`clientWidth`. That is the right check for public pages, but Chromium over-reports
+`scrollWidth` on any page containing a nested horizontal scroller even though the
+document cannot actually be scrolled sideways — `body { overflow-x: hidden }` clips
+it. For screens built around a deliberate rail (the lead board, wide admin tables)
+use `expectContainedHorizontalScroll`, which asserts the real invariant: the rail is
+no wider than the viewport, and the page itself does not scroll.
 
 ## Integration suite
 
@@ -187,6 +217,7 @@ Three projects, chosen to cover the layouts that actually break:
 - `BREAKPOINTS` = `[360, 390, 430, 768, 1024, 1280, 1440, 1920]`
 - `DESKTOP_NAV_MIN_WIDTH` = `1280` — the header switches from the drawer to inline navigation at Tailwind's `xl`. Assertions about nav shape must branch on this value, not on a hardcoded 1024.
 - `expectNoHorizontalOverflow(page, label)` — fails on sideways scroll, with one pixel of slack, and names the widest offending element
+- `expectContainedHorizontalScroll(page, selector, label)` — for pages with a deliberate rail; see "Measuring horizontal overflow" above
 - `expectSingleH1(page)`, `gotoStable(page, path)`, `isErrorPage(page)`, `countOrZero(page, selector)`
 
 **E2E specs need a seeded database.** `webServer` starts the app but nothing populates MongoDB. Run `npm run db:seed:fresh` against a dedicated test database first, or the dataset-dependent specs (college detail, predictor detail, comparison table) fall back to their empty-state branches and assert much less than intended. Several specs are written to degrade gracefully rather than fail on an empty dataset, so a green run on an unseeded database is not evidence of working journeys.
@@ -213,6 +244,7 @@ Specs exist for the rows marked ✅. The rest are the intended backlog, kept her
 | 3 | Header navigation reachable | ✅ `home.spec.ts` |
 | 4 | Hero search → suggestions from `/api/search/suggest` or submit to `/search` | ✅ `search.spec.ts` |
 | 5 | `/search` renders for a query, for a no-match query and for an empty query | ✅ `search.spec.ts` |
+| 5a | Every SEO directory index renders with one `h1` and no overflow; enum landings resolve and unknown slugs 404; static segments win over sibling dynamic routes; the footer links every index; the taxonomy sitemap shard lists the enum landings | ✅ `seo-landing-pages.spec.ts` |
 | 6 | College listing renders; URL-param filter stays healthy; unmatched filter shows an empty state | ✅ `colleges.spec.ts` |
 | 7 | College detail opens and the courses / fees / cutoff / reviews tabs resolve | ✅ `colleges.spec.ts` |
 | 8 | `/compare-colleges` renders with an empty state or a table; preselected slugs do not break it; narrow viewport holds | ✅ `compare.spec.ts` |
@@ -293,10 +325,20 @@ Specs exist for the rows marked ✅. The rest are the intended backlog, kept her
 | 54 | A content manager (not just the super admin) can reach article publishing | ✅ `e2e/admin-workflows.spec.ts` (11) |
 | 55 | The admin console is served `noindex` | ✅ `e2e/admin-workflows.spec.ts` |
 | 56 | Every sidebar entry resolves, and every registered resource is reachable | ✅ `unit/config/admin-nav.test.ts` |
+| 57 | Lead board groups every lifecycle stage, keeps empty stages, and honours the filters | ✅ `integration/services/lead-admin.service.test.ts` |
+| 58 | A stage change, assignment, call outcome and note each write their own timeline entry | ✅ `integration/services/lead-admin.service.test.ts` |
+| 59 | Clearing an assignment really clears it and releases the counsellor's load | ✅ `integration/services/lead-admin.service.test.ts` |
+| 60 | A follow-up date queues a scheduled reminder | ✅ `integration/services/lead-admin.service.test.ts` |
+| 61 | Lead CSV export escapes quotes, defuses formula injection and omits the consent IP hash | ✅ `integration/services/lead-admin.service.test.ts` |
+| 62 | `lead.assign` and `lead.export` are enforced separately from `lead.update` | ✅ `integration/authorization.test.ts` |
+| 63 | Board ↔ table toggle, URL-shareable filters, manual lead creation and a stage change through the UI | ✅ `e2e/admin-leads.spec.ts` |
+| 64 | The board and table rails scroll without dragging the page sideways at 768px and 360px | ✅ `e2e/admin-leads.spec.ts` |
+| 65 | Internal link scan is refused without `seo.manage` | ✅ `integration/authorization.test.ts` |
 
-`admin-workflows.spec.ts` needs a signed-in staff session, so every test in it
-skips with an explanatory message when `npm run db:seed` has not been run against
-a reachable MongoDB. A skipped run is not a passing run — check the report.
+`admin-workflows.spec.ts` and `admin-leads.spec.ts` need a signed-in staff session,
+so every test in them skips with an explanatory message when `npm run db:seed` has
+not been run against a reachable MongoDB. A skipped run is not a passing run — check
+the report.
 
 ### AI assistant
 

@@ -19,6 +19,11 @@ test.describe('homepage', () => {
         const desktopNav = page.getByRole('navigation', { name: /primary/i });
         const menuButton = page.getByRole('button', { name: /open menu/i });
 
+        // Wait for one of the affordances to render before deciding which branch to
+        // assert — reading `isVisible()` straight after navigation can catch the page
+        // mid-stream and send the test down the wrong path.
+        await expect(desktopNav.or(menuButton).first()).toBeVisible();
+
         // Exactly one of the two navigation affordances is visible at any width.
         const desktopVisible = await desktopNav.isVisible().catch(() => false);
         if (desktopVisible) {
