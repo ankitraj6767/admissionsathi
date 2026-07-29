@@ -452,6 +452,14 @@ export async function seedCommunicationTemplates(adminId: Types.ObjectId): Promi
             bodyHtml: '<p>Hi {{name}}, the {{examName}} application window closes on {{deadline}}.</p>',
             availableVariables: ['name', 'examName', 'deadline'],
         },
+        {
+            key: 'booking.cancelled',
+            name: 'Booking cancelled',
+            subject: 'Your counselling session has been cancelled',
+            bodyHtml:
+                '<p>Hi {{name}},</p><p>Your counselling session ({{reference}}) has been cancelled. You can book a new slot any time.</p>',
+            availableVariables: ['name', 'reference', 'reason'],
+        },
     ];
 
     for (const template of emailTemplates) {
@@ -489,6 +497,13 @@ export async function seedCommunicationTemplates(adminId: Types.ObjectId): Promi
             bodyText:
                 'Hi {{name}}, your Admission Sathi session ({{reference}}) has been moved to {{scheduledAt}}.',
             availableVariables: ['name', 'reference', 'scheduledAt', 'counsellorName'],
+        },
+        {
+            key: 'booking.cancelled',
+            name: 'Booking cancelled',
+            bodyText:
+                'Hi {{name}}, your Admission Sathi session ({{reference}}) has been cancelled. Book a new slot any time on admissionsathi.org.',
+            availableVariables: ['name', 'reference', 'reason'],
         },
     ];
 

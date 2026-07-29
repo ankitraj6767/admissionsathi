@@ -196,6 +196,22 @@ export function renderTemplate(template: string, variables: Record<string, strin
     return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key: string) => variables[key] ?? '');
 }
 
+/**
+ * Placeholder keys in a template that the supplied variables cannot fill.
+ *
+ * A partially-rendered template is worse than no template: `<p>Hi {{name}}</p>`
+ * with no `name` becomes "Hi ," which reads like a bug to the recipient. Callers
+ * that forget to pass variables therefore fall back to their inline copy rather
+ * than sending something half-filled.
+ */
+export function unresolvedPlaceholders(
+    template: string,
+    variables: Record<string, string>,
+): string[] {
+    const keys = Array.from(template.matchAll(/\{\{\s*(\w+)\s*\}\}/g), (m) => m[1]!);
+    return Array.from(new Set(keys.filter((key) => !variables[key])));
+}
+
 export async function getEmailTemplate(key: string) {
     return findEmailTemplate(key);
 }
@@ -241,9 +257,23 @@ async function resolveCopy(notification: NotificationDoc): Promise<ResolvedCopy>
         ((notification.payload as { variables?: Record<string, string> } | undefined)?.variables) ?? {};
 
     try {
+        /** Refuses a template whose placeholders cannot all be filled. */
+        const usable = (source: string): boolean => {
+            const missing = unresolvedPlaceholders(source, variables);
+            if (missing.length === 0) return true;
+
+            logger.warn('notification.template_missing_variables', {
+                event: notification.event,
+                channel: notification.channel,
+                missing,
+            });
+            return false;
+        };
+
         if (notification.channel === 'email') {
             const template = await findEmailTemplate(notification.event);
             if (!template) return fallback;
+            if (!usable(`${template.subject} ${template.bodyHtml}`)) return fallback;
 
             return {
                 subject: renderTemplate(template.subject, variables) || fallback.subject,
@@ -260,6 +290,7 @@ async function resolveCopy(notification: NotificationDoc): Promise<ResolvedCopy>
             // Only approved templates go out: WhatsApp rejects unapproved ones at the
             // provider, and sending unreviewed marketing copy is a compliance risk.
             if (!template || template.approvalStatus !== 'approved') return fallback;
+            if (!usable(template.bodyText)) return fallback;
 
             return {
                 subject: fallback.subject,

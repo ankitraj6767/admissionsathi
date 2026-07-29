@@ -65,6 +65,7 @@ export async function signUpAction(input: unknown): Promise<ActionResult<{ email
             title: 'Welcome to Admission Sathi',
             body: `Hi ${data.name}, your Admission Sathi account is ready. Save colleges, run predictors and book free counselling any time.`,
             actionUrl: '/dashboard',
+            variables: { name: data.name },
         });
 
         return succeed({ email: data.email }, 'Account created. You can now sign in.');

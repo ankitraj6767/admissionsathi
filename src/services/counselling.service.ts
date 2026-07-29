@@ -296,7 +296,43 @@ export async function rescheduleBooking(
 }
 
 export async function cancelBooking(bookingId: string, reason: string): Promise<void> {
+    const booking = await getBookingById(bookingId);
+    if (!booking) throw new Error('Booking not found');
+
     await updateBooking(bookingId, { status: 'cancelled', cancellationReason: reason });
+
+    // The student must be told, whoever cancelled. A silently cancelled session is
+    // someone turning up to an empty meeting link.
+    await queueNotification({
+        event: 'booking.cancelled',
+        channel: 'whatsapp',
+        to: booking.phone,
+        title: 'Session cancelled',
+        body: `Your Admission Sathi counselling session (${booking.reference}) has been cancelled. Reply to rebook, or book a new slot on the site.`,
+        variables: {
+            name: booking.studentName,
+            reference: booking.reference,
+            reason,
+        },
+        dedupeKey: `booking-cancel-wa-${booking._id}`,
+    });
+
+    if (booking.email) {
+        await queueNotification({
+            event: 'booking.cancelled',
+            channel: 'email',
+            to: booking.email,
+            title: 'Your counselling session has been cancelled',
+            body: `Hi ${booking.studentName}, your counselling session (${booking.reference}) has been cancelled. You can book a new slot any time.`,
+            actionUrl: '/book-counselling',
+            variables: {
+                name: booking.studentName,
+                reference: booking.reference,
+                reason,
+            },
+            dedupeKey: `booking-cancel-email-${booking._id}`,
+        });
+    }
 }
 
 /**
