@@ -458,7 +458,7 @@ export async function seedFinance(
 
 export async function seedCounsellors(
     adminId: Types.ObjectId,
-    ctx: Pick<SeedContext, 'categoryIdBySlug'>,
+    ctx: Pick<SeedContext, 'categoryIdBySlug' | 'stateIdBySlug'>,
 ) {
     let order = 0;
     const availability = [1, 2, 3, 4, 5, 6].flatMap((weekday) =>
@@ -484,6 +484,9 @@ export async function seedCounsellors(
                     specializations: seed.specializations,
                     focusCategories: seed.categorySlugs
                         .map((s) => ctx.categoryIdBySlug.get(s)?.id)
+                        .filter(Boolean),
+                    focusStates: seed.stateSlugs
+                        .map((s) => ctx.stateIdBySlug.get(s))
                         .filter(Boolean),
                     experienceYears: seed.experienceYears,
                     qualifications: seed.qualifications,
@@ -981,7 +984,19 @@ export async function seedSampleLeads(adminId: Types.ObjectId) {
     await CounsellingBooking.deleteMany({});
 
     const counsellors = await Counsellor.find().select('_id name').limit(5).lean().exec();
-    const statuses = ['new', 'contacted', 'qualified', 'session_scheduled', 'converted', 'lost'];
+    // Every stage in `LEAD_STATUSES`, so each column of the CRM board has something
+    // in it — an all-empty column reads like a broken screen in a demo.
+    const statuses = [
+        'new',
+        'contacted',
+        'qualified',
+        'session_scheduled',
+        'session_completed',
+        'follow_up',
+        'converted',
+        'closed',
+        'lost',
+    ];
     const sources = [
         'homepage_counselling_form',
         'predictor_submission',
@@ -1039,7 +1054,21 @@ export async function seedSampleLeads(adminId: Types.ObjectId) {
             actorName: 'Seed script',
         });
 
-        if (status === 'session_scheduled' || status === 'converted') {
+        // A lead past the "qualified" stage should have a real stage change behind it,
+        // otherwise every seeded timeline is a single "created" row.
+        if (status !== 'new') {
+            await LeadActivity.create({
+                lead: lead._id,
+                type: 'status_change',
+                title: `Status moved to ${status.replace(/_/g, ' ')}`,
+                fromValue: 'new',
+                toValue: status,
+                isInternal: true,
+                actorName: counsellor?.name ?? 'Seed script',
+            });
+        }
+
+        if (['session_scheduled', 'session_completed', 'converted'].includes(status)) {
             const booking = await CounsellingBooking.create({
                 reference: `BK-DEMO-${String(index + 1).padStart(4, '0')}`,
                 lead: lead._id,
@@ -1053,7 +1082,7 @@ export async function seedSampleLeads(adminId: Types.ObjectId) {
                 scheduledAt: daysFromNow((index % 6) + 1),
                 durationMinutes: 30,
                 preferredTimeLabel: 'morning',
-                status: status === 'converted' ? 'completed' : 'confirmed',
+                status: status === 'session_scheduled' ? 'confirmed' : 'completed',
                 meetingLink: 'https://meet.example.org/demo-session',
                 source: 'seed',
                 createdBy: adminId,

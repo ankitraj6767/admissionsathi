@@ -25,6 +25,25 @@ const SOCIALS: { key: string; label: string; icon: IconDefinition }[] = [
     { key: 'social.telegram', label: 'Telegram', icon: faTelegram },
 ];
 
+/**
+ * Directory indexes for the SEO landing pages.
+ *
+ * These are route-level, not content rows, so they are declared here rather than
+ * managed as a navigation menu — a missing menu record should never make a
+ * published landing page unreachable.
+ */
+const DIRECTORY_LINKS = [
+    { label: 'Colleges by state', href: '/colleges/state' },
+    { label: 'Colleges by city', href: '/colleges/city' },
+    { label: 'Colleges by course', href: '/colleges/course' },
+    { label: 'Colleges by exam', href: '/colleges/exam' },
+    { label: 'Courses by stream', href: '/courses/category' },
+    { label: 'Courses by level', href: '/courses/level' },
+    { label: 'Exams by category', href: '/exams/category' },
+    { label: 'Scholarships by course', href: '/scholarships/course' },
+    { label: 'Counselling by state', href: '/counselling/state' },
+];
+
 /** Full site footer — every column, link and contact detail comes from MongoDB. */
 export async function SiteFooter() {
     // All five are cached reads, so the footer costs no database round trips on a
@@ -199,6 +218,25 @@ export async function SiteFooter() {
                                 </div>
                             </div>
                         ) : null}
+
+                        {/* Directory indexes. Kept in the footer so every landing
+                            page is reachable by a crawler from any page. */}
+                        <div>
+                            <p className="mb-1.5 text-[11px] font-bold uppercase tracking-wider text-white/60">
+                                Browse directories
+                            </p>
+                            <div className="flex flex-wrap gap-x-3 gap-y-1.5">
+                                {DIRECTORY_LINKS.map((link) => (
+                                    <Link
+                                        key={link.href}
+                                        href={link.href}
+                                        className="text-[11.5px] text-white/60 hover:text-orange"
+                                    >
+                                        {link.label}
+                                    </Link>
+                                ))}
+                            </div>
+                        </div>
                     </div>
                 ) : null}
 

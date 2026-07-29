@@ -162,6 +162,29 @@ export async function listPublishedExamOptions(
         .exec();
 }
 
+export interface ExamDirectoryRow {
+    _id: unknown;
+    shortName: string;
+    slug: string;
+    category?: string;
+    acceptedByCollegeCount?: number;
+}
+
+/**
+ * Published exams with the fields the `/colleges/exam` directory groups on.
+ * Separate from `listPublishedExamOptions`, which is deliberately a two-field
+ * projection for filter dropdowns.
+ */
+export async function listExamDirectoryRows(limit = 80): Promise<ExamDirectoryRow[]> {
+    await connectToDatabase();
+    return Exam.find(PUBLISHED)
+        .select('shortName slug category acceptedByCollegeCount')
+        .sort({ displayOrder: 1, shortName: 1 })
+        .limit(limit)
+        .lean<ExamDirectoryRow[]>()
+        .exec();
+}
+
 /** Resolves an exam slug to its id, for filter params that arrive as slugs. */
 export async function findExamIdBySlug(slug: string): Promise<string | null> {
     const exam = await findOneLean<ExamDoc>(Exam, { slug }, { projection: { _id: 1 } });

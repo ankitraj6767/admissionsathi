@@ -21,7 +21,8 @@ export async function listStates(options?: {
         {
             sort: { displayOrder: 1, name: 1 },
             limit: options?.limit ?? 40,
-            projection: { name: 1, slug: 1, code: 1, collegeCount: 1, isFeatured: 1 },
+            // `region` powers the region grouping on /colleges/state.
+            projection: { name: 1, slug: 1, code: 1, region: 1, collegeCount: 1, isFeatured: 1 },
         },
     );
 }

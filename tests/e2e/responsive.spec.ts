@@ -57,9 +57,14 @@ test.describe('responsive layout', () => {
         await page.setViewportSize({ width: 390, height: 844 });
         await gotoStable(page, '/');
 
-        await page.getByRole('button', { name: /open menu/i }).click();
         const drawer = page.getByRole('navigation', { name: /mobile/i });
-        await expect(drawer).toBeVisible();
+
+        // The drawer is client-side, so a click that lands before hydration is simply
+        // dropped. Retry until it opens rather than racing hydration.
+        await expect(async () => {
+            await page.getByRole('button', { name: /open menu/i }).click();
+            await expect(drawer).toBeVisible({ timeout: 1_000 });
+        }).toPass({ timeout: 15_000 });
 
         await page.getByRole('button', { name: /close menu/i }).first().click();
         await expect(drawer).toBeHidden();

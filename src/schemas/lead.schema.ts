@@ -86,6 +86,16 @@ export const adminLeadUpdateSchema = z.object({
         .optional(),
 });
 
+export type AdminLeadUpdateInput = z.infer<typeof adminLeadUpdateSchema>;
+
+export const CALL_OUTCOMES = [
+    'connected',
+    'not_answered',
+    'busy',
+    'wrong_number',
+    'switched_off',
+] as const;
+
 export const adminLeadCreateSchema = z.object({
     name: z.string().trim().min(2).max(120),
     phone: phoneSchema,
@@ -99,6 +109,8 @@ export const adminLeadCreateSchema = z.object({
     message: z.string().max(2000).optional(),
 });
 
+export type AdminLeadCreateInput = z.infer<typeof adminLeadCreateSchema>;
+
 export const leadFilterSchema = z.object({
     q: z.string().max(120).optional(),
     status: z.enum(LEAD_STATUSES).optional(),
@@ -111,9 +123,13 @@ export const leadFilterSchema = z.object({
     pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+export type LeadFilterInput = z.infer<typeof leadFilterSchema>;
+
 export const bulkLeadUpdateSchema = z.object({
     ids: z.array(z.string().min(1)).min(1).max(200),
     status: z.enum(LEAD_STATUSES).optional(),
     assignedTo: z.string().optional(),
     priority: z.enum(LEAD_PRIORITIES).optional(),
 });
+
+export type BulkLeadUpdateInput = z.infer<typeof bulkLeadUpdateSchema>;

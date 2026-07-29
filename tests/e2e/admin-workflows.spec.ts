@@ -75,7 +75,9 @@ test.describe('admin workflows', () => {
     test('10. lead management offers status updates and assignment', async ({ page }, testInfo) => {
         await signInAsAdmin(page, testInfo);
 
-        await gotoStable(page, '/admin/leads');
+        // `/admin/leads` defaults to the Kanban board, so ask for the table view
+        // explicitly — this test is about the row-to-detail path.
+        await gotoStable(page, '/admin/leads?view=table');
         await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
 
         const rows = page.locator('table tbody tr');

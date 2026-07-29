@@ -107,15 +107,105 @@ export async function getLeadById(id: string): Promise<LeadDoc | null> {
     return Lead.findById(id).lean<LeadDoc>().exec();
 }
 
-export async function updateLead(id: string, update: Partial<LeadDoc>): Promise<LeadDoc | null> {
+/**
+ * Applies a partial update to a lead.
+ *
+ * `unset` exists because `$set: { field: undefined }` is a no-op in MongoDB — it
+ * silently leaves the old value in place. Clearing a counsellor assignment needs a
+ * real `$unset`, so callers name the fields to remove.
+ */
+export async function updateLead(
+    id: string,
+    update: Partial<LeadDoc>,
+    unset: (keyof LeadDoc)[] = [],
+): Promise<LeadDoc | null> {
     await connectToDatabase();
-    return Lead.findByIdAndUpdate(id, { $set: update }, { new: true }).lean<LeadDoc>().exec();
+
+    const operations: Record<string, unknown> = {};
+    if (Object.keys(update).length > 0) operations.$set = update;
+    if (unset.length > 0) {
+        operations.$unset = Object.fromEntries(unset.map((field) => [field, '']));
+    }
+    if (Object.keys(operations).length === 0) return getLeadById(id);
+
+    return Lead.findByIdAndUpdate(id, operations, { new: true }).lean<LeadDoc>().exec();
 }
 
 export async function bulkUpdateLeads(ids: string[], update: Partial<LeadDoc>): Promise<number> {
     await connectToDatabase();
     const res = await Lead.updateMany({ _id: { $in: ids } }, { $set: update }).exec();
     return res.modifiedCount;
+}
+
+/** One column of the CRM board: the newest leads in a single status. */
+export interface LeadBoardColumn {
+    status: string;
+    total: number;
+    items: LeadDoc[];
+}
+
+/**
+ * Board data in a single round trip.
+ *
+ * `$group` + `$slice` keeps every column capped, so the board stays bounded even
+ * when a status holds tens of thousands of leads — the count is still exact.
+ */
+export async function leadBoardColumns(
+    query: LeadQuery,
+    perColumn = 25,
+): Promise<LeadBoardColumn[]> {
+    await connectToDatabase();
+    const filter = { ...buildLeadFilter(query), isDeleted: { $ne: true } };
+
+    const rows = await Lead.aggregate<{ _id: string; total: number; items: LeadDoc[] }>([
+        { $match: filter },
+        { $sort: { createdAt: -1 } },
+        {
+            $group: {
+                _id: '$status',
+                total: { $sum: 1 },
+                items: {
+                    $push: {
+                        _id: '$_id',
+                        reference: '$reference',
+                        name: '$name',
+                        phone: '$phone',
+                        email: '$email',
+                        cityName: '$cityName',
+                        stateName: '$stateName',
+                        courseInterestName: '$courseInterestName',
+                        collegeInterestName: '$collegeInterestName',
+                        source: '$source',
+                        status: '$status',
+                        priority: '$priority',
+                        score: '$score',
+                        assignedTo: '$assignedTo',
+                        assignedToName: '$assignedToName',
+                        followUpAt: '$followUpAt',
+                        isDuplicate: '$isDuplicate',
+                        createdAt: '$createdAt',
+                    },
+                },
+            },
+        },
+        { $project: { total: 1, items: { $slice: ['$items', perColumn] } } },
+    ]).exec();
+
+    return rows.map((row) => ({ status: row._id, total: row.total, items: row.items }));
+}
+
+/**
+ * Rows for a CSV export. Hard-capped and projected — an export must never turn
+ * into an unbounded scan, and the consent IP hash is operational data that has no
+ * place in a spreadsheet.
+ */
+export async function listLeadsForExport(query: LeadQuery, limit = 5_000): Promise<LeadDoc[]> {
+    return findLean<LeadDoc>(Lead, { ...buildLeadFilter(query), isDeleted: { $ne: true } }, {
+        sort: { createdAt: -1 },
+        limit,
+        projection:
+            'reference name phone email stateName cityName courseInterestName collegeInterestName examInterestName source sourceDetail campaign status priority score assignedToName followUpAt lastContactedAt contactAttempts isDuplicate convertedAt lostReason createdAt utm.source utm.medium utm.campaign',
+    });
 }
 
 export async function leadCountsByStatus(): Promise<Record<string, number>> {
@@ -136,6 +226,31 @@ export async function leadCountsBySource(days = 30): Promise<{ source: string; c
         { $sort: { count: -1 } },
     ]).exec();
     return rows.map((r) => ({ source: r._id, count: r.count }));
+}
+
+/** Per-counsellor load and conversion, for the lead analytics panel. */
+export async function leadCountsByCounsellor(
+    limit = 12,
+): Promise<{ counsellorName: string; total: number; converted: number }[]> {
+    await connectToDatabase();
+    const rows = await Lead.aggregate<{ _id: string | null; total: number; converted: number }>([
+        { $match: { isDeleted: { $ne: true } } },
+        {
+            $group: {
+                _id: '$assignedToName',
+                total: { $sum: 1 },
+                converted: { $sum: { $cond: [{ $eq: ['$status', 'converted'] }, 1, 0] } },
+            },
+        },
+        { $sort: { total: -1 } },
+        { $limit: limit },
+    ]).exec();
+
+    return rows.map((row) => ({
+        counsellorName: row._id ?? 'Unassigned',
+        total: row.total,
+        converted: row.converted,
+    }));
 }
 
 export async function leadTrend(days = 14): Promise<{ date: string; count: number }[]> {

@@ -92,10 +92,15 @@ test.describe('header search dialog', () => {
         await page.setViewportSize({ width: 1280, height: 800 });
         await gotoStable(page, '/');
 
-        await page.getByRole('button', { name: 'Search', exact: true }).first().click();
-
+        const trigger = page.getByRole('button', { name: 'Search', exact: true }).first();
         const dialog = page.getByRole('dialog', { name: 'Site search' });
-        await expect(dialog).toBeVisible();
+
+        // The trigger is a Client Component, so a click that lands before hydration is
+        // simply dropped. Retry the click until the dialog opens rather than racing it.
+        await expect(async () => {
+            await trigger.click();
+            await expect(dialog).toBeVisible({ timeout: 1_000 });
+        }).toPass({ timeout: 15_000 });
 
         const box = await dialog.boundingBox();
         // Same containing-block bug would have clamped this to the header strip.

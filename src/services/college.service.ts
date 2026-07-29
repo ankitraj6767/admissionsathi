@@ -13,8 +13,12 @@ import {
     type CollegeListFilters,
 } from '@/db/repositories/college.repository';
 import { listCollegeReviews } from '@/db/repositories/content.repository';
-import { findCourseIdBySlug, listCourseCategories } from '@/db/repositories/course.repository';
-import { listPublishedExamOptions } from '@/db/repositories/exam.repository';
+import {
+    findCourseIdBySlug,
+    getCourseCategoryBySlug,
+    listCourseCategories,
+} from '@/db/repositories/course.repository';
+import { findExamIdBySlug, listPublishedExamOptions } from '@/db/repositories/exam.repository';
 import { getCityBySlug, getStateBySlug, listCities, listStates } from '@/db/repositories/geo.repository';
 import { toPlain } from '@/db/repositories/base.repository';
 import {
@@ -63,10 +67,14 @@ export async function resolveCollegeFilters(
     params: CollegeSearchParams,
     overrides: Partial<CollegeListFilters> = {},
 ): Promise<CollegeListFilters> {
-    const [state, city, courseId] = await Promise.all([
+    const [state, city, courseId, category, examId] = await Promise.all([
         params.state ? getStateBySlug(params.state) : null,
         params.city ? getCityBySlug(params.city) : null,
         params.course ? findCourseIdBySlug(params.course) : null,
+        // `category` and `exam` are offered by the filter panel, so they have to
+        // resolve here too — otherwise selecting them silently changes nothing.
+        params.category ? getCourseCategoryBySlug(params.category) : null,
+        params.exam ? findExamIdBySlug(params.exam) : null,
     ]);
 
     const numeric = (value?: string) => {
@@ -79,6 +87,8 @@ export async function resolveCollegeFilters(
         stateId: state ? String(state._id) : undefined,
         cityId: city ? String(city._id) : undefined,
         courseId: courseId ?? undefined,
+        categoryId: category ? String(category._id) : undefined,
+        examId: examId ?? undefined,
         ownership: params.ownership?.split(',').filter((v) => (OWNERSHIP_TYPES as readonly string[]).includes(v)),
         approval: params.approval?.split(',').filter((v) => (APPROVAL_BODIES as readonly string[]).includes(v)),
         accreditation: params.accreditation

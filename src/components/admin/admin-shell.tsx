@@ -230,7 +230,10 @@ export function AdminShell({ actor, badges, branding, children }: AdminShellProp
                     </div>
                 </header>
 
-                <main className="flex-1 px-3 py-4 md:px-5 md:py-6">{children}</main>
+                {/* `min-w-0` lets this flex item shrink below its content's intrinsic
+                    width, so wide children (data tables, the lead board) scroll inside
+                    their own container instead of widening the page. */}
+                <main className="min-w-0 flex-1 px-3 py-4 md:px-5 md:py-6">{children}</main>
             </div>
         </div>
     );

@@ -165,3 +165,58 @@ export function CtaBanner({
         </section>
     );
 }
+
+/**
+ * Grid of directory links used by the SEO landing-page indexes
+ * (`/courses/level`, `/exams/category`, `/colleges/exam`, …).
+ *
+ * Each index exists so its `/[slug]` children are reachable and crawlable from a
+ * real page rather than from the sitemap alone.
+ */
+export function LinkTileGrid({
+    items,
+    columns = 3,
+    className,
+}: {
+    items: { label: string; href: string; description?: string; meta?: string }[];
+    columns?: 2 | 3 | 4;
+    className?: string;
+}) {
+    return (
+        <ul
+            className={cn(
+                // `grid-cols-1` is explicit rather than implied: Tailwind's column
+                // utilities are `minmax(0, 1fr)`, whereas the default implicit track is
+                // `auto` and refuses to shrink below the label's `nowrap` min-content —
+                // which pushed long course names past a 390px viewport.
+                'grid grid-cols-1 gap-2.5',
+                columns === 2 ? 'sm:grid-cols-2' : columns === 3 ? 'sm:grid-cols-2 lg:grid-cols-3' : 'sm:grid-cols-2 lg:grid-cols-4',
+                className,
+            )}
+        >
+            {items.map((item) => (
+                <li key={item.href}>
+                    <Link
+                        href={item.href}
+                        className="flex h-full flex-col rounded-[12px] border border-line bg-white px-3.5 py-3 transition-all hover:-translate-y-0.5 hover:border-navy-200 hover:shadow-card"
+                    >
+                        {/* `min-w-0` is what lets the label actually truncate: without it
+                            the flex item keeps its content's intrinsic width and long
+                            course names widen the page on a 360px screen. */}
+                        <span className="flex min-w-0 items-center justify-between gap-2">
+                            <span className="truncate text-[13px] font-bold text-ink">{item.label}</span>
+                            {item.meta ? (
+                                <span className="shrink-0 text-[11px] font-bold text-ink-soft">{item.meta}</span>
+                            ) : null}
+                        </span>
+                        {item.description ? (
+                            <span className="mt-1 line-clamp-2 text-[11.5px] leading-relaxed text-ink-soft">
+                                {item.description}
+                            </span>
+                        ) : null}
+                    </Link>
+                </li>
+            ))}
+        </ul>
+    );
+}
