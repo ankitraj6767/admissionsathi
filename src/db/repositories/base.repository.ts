@@ -5,6 +5,7 @@ export type PopulateArg = PopulateOptions | (string | PopulateOptions)[];
 import { connectToDatabase } from '@/db/connect';
 import { siteConfig } from '@/config/site';
 import { envPlaceholderIssues } from '@/lib/env';
+import { logger } from '@/lib/logger';
 import type { Paginated } from '@/types/common';
 
 /**
@@ -12,8 +13,9 @@ import type { Paginated } from '@/types/common';
  *
  * Returns `false` when the process is compiling with placeholder credentials
  * (`next build` on a machine or CI runner without database access). Reads then
- * resolve to empty results so pre-rendering can finish, while every runtime read
- * still connects normally and surfaces real failures to the error boundaries.
+ * resolve to empty results so pre-rendering can finish. Runtime reads also use
+ * the guarded helpers below, so a brief database outage cannot take down a
+ * public page.
  */
 async function connectForRead(): Promise<boolean> {
     if (envPlaceholderIssues().length > 0) return false;
@@ -31,6 +33,24 @@ function emptyPage<T>(page: number, pageSize: number): Paginated<T> {
         hasNext: false,
         hasPrev: false,
     };
+}
+
+/**
+ * Public pages should remain usable during a short Atlas hiccup. A single
+ * failed read must not turn an otherwise valid route into the global error
+ * boundary; callers receive an empty, correctly-shaped result and the failure
+ * is still visible in structured production logs.
+ */
+async function safeRead<T>(operation: string, fallback: T, read: () => Promise<T>): Promise<T> {
+    try {
+        return await read();
+    } catch (error) {
+        logger.warn('db.read_failed', {
+            operation,
+            error: error instanceof Error ? error.message : String(error),
+        });
+        return fallback;
+    }
 }
 
 export interface PaginateArgs<T> {
@@ -64,36 +84,39 @@ export async function paginate<T>(
         asPositiveInt(args.pageSize, siteConfig.pagination.listing),
     );
 
-    if (!(await connectForRead())) return emptyPage<T>(page, pageSize);
+    return safeRead(`paginate:${model.modelName}`, emptyPage<T>(page, pageSize), async () => {
+        if (!(await connectForRead())) return emptyPage<T>(page, pageSize);
 
-    const filter = (args.filter ?? {}) as FilterQuery<T>;
+        const filter = (args.filter ?? {}) as FilterQuery<T>;
 
-    const query = model
-        .find(filter, args.projection)
-        .sort(args.sort ?? { createdAt: -1 })
-        .skip((page - 1) * pageSize)
-        .limit(pageSize)
-        .lean<T[]>();
+        const query = model
+            .find(filter, args.projection)
+            .sort(args.sort ?? { createdAt: -1 })
+            .skip((page - 1) * pageSize)
+            .limit(pageSize)
+            .maxTimeMS(8_000)
+            .lean<T[]>();
 
-    if (args.populate) query.populate(args.populate);
-    if (args.collation) query.collation(args.collation);
+        if (args.populate) query.populate(args.populate);
+        if (args.collation) query.collation(args.collation);
 
-    const [items, total] = await Promise.all([
-        query.exec(),
-        model.countDocuments(filter).exec(),
-    ]);
+        const [items, total] = await Promise.all([
+            query.exec(),
+            model.countDocuments(filter).maxTimeMS(8_000).exec(),
+        ]);
 
-    const totalPages = Math.max(1, Math.ceil(total / pageSize));
+        const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-    return {
-        items: items as T[],
-        page,
-        pageSize,
-        total,
-        totalPages,
-        hasNext: page < totalPages,
-        hasPrev: page > 1,
-    };
+        return {
+            items: items as T[],
+            page,
+            pageSize,
+            total,
+            totalPages,
+            hasNext: page < totalPages,
+            hasPrev: page > 1,
+        };
+    });
 }
 
 /** Bounded `find` for small reference lists (nav, categories, chips). */
@@ -107,14 +130,17 @@ export async function findLean<T>(
         populate?: PopulateArg;
     } = {},
 ): Promise<T[]> {
-    if (!(await connectForRead())) return [];
-    const query = model
-        .find(filter, options.projection)
-        .sort(options.sort ?? { displayOrder: 1 })
-        .limit(Math.min(options.limit ?? 100, 500))
-        .lean<T[]>();
-    if (options.populate) query.populate(options.populate);
-    return (await query.exec()) as T[];
+    return safeRead(`find:${model.modelName}`, [], async () => {
+        if (!(await connectForRead())) return [];
+        const query = model
+            .find(filter, options.projection)
+            .sort(options.sort ?? { displayOrder: 1 })
+            .limit(Math.min(options.limit ?? 100, 500))
+            .maxTimeMS(8_000)
+            .lean<T[]>();
+        if (options.populate) query.populate(options.populate);
+        return (await query.exec()) as T[];
+    });
 }
 
 export async function findOneLean<T>(
@@ -122,15 +148,19 @@ export async function findOneLean<T>(
     filter: FilterQuery<T>,
     options: { projection?: ProjectionType<T>; populate?: PopulateArg } = {},
 ): Promise<T | null> {
-    if (!(await connectForRead())) return null;
-    const query = model.findOne(filter, options.projection).lean<T>();
-    if (options.populate) query.populate(options.populate);
-    return (await query.exec()) as T | null;
+    return safeRead(`findOne:${model.modelName}`, null, async () => {
+        if (!(await connectForRead())) return null;
+        const query = model.findOne(filter, options.projection).maxTimeMS(8_000).lean<T>();
+        if (options.populate) query.populate(options.populate);
+        return (await query.exec()) as T | null;
+    });
 }
 
 export async function countDocs<T>(model: Model<T>, filter: FilterQuery<T> = {}): Promise<number> {
-    if (!(await connectForRead())) return 0;
-    return model.countDocuments(filter).exec();
+    return safeRead(`count:${model.modelName}`, 0, async () => {
+        if (!(await connectForRead())) return 0;
+        return model.countDocuments(filter).maxTimeMS(8_000).exec();
+    });
 }
 
 /**
@@ -141,15 +171,22 @@ export async function countDocs<T>(model: Model<T>, filter: FilterQuery<T> = {})
  * the document type just to name the aggregation's result type.
  */
 interface Aggregatable {
-    aggregate<TResult>(pipeline: PipelineStage[]): { exec(): Promise<TResult[]> };
+    aggregate<TResult>(pipeline: PipelineStage[]): {
+        exec(): Promise<TResult[]>;
+        option?: (options: Record<string, unknown>) => unknown;
+    };
 }
 
 export async function aggregateLean<TResult = Record<string, unknown>>(
     model: Aggregatable,
     pipeline: PipelineStage[],
 ): Promise<TResult[]> {
-    if (!(await connectForRead())) return [];
-    return model.aggregate<TResult>(pipeline).exec();
+    return safeRead(`aggregate:${'modelName' in model ? String((model as { modelName?: unknown }).modelName) : 'unknown'}`, [], async () => {
+        if (!(await connectForRead())) return [];
+        const aggregation = model.aggregate<TResult>(pipeline);
+        aggregation.option?.({ maxTimeMS: 8_000 });
+        return aggregation.exec();
+    });
 }
 
 /** A slug-addressable row as the sitemap needs it. */
@@ -170,15 +207,18 @@ export async function listSlugRows<T>(
     filter: FilterQuery<T>,
     options: { limit: number; sort?: Record<string, 1 | -1> },
 ): Promise<SlugRow[]> {
-    if (!(await connectForRead())) return [];
-    const rows = await model
-        .find(filter)
-        .select({ slug: 1, updatedAt: 1 })
-        .sort(options.sort ?? { updatedAt: -1 })
-        .limit(options.limit)
-        .lean<SlugRow[]>()
-        .exec();
-    return rows.filter((row) => Boolean(row?.slug));
+    return safeRead('listSlugRows', [], async () => {
+        if (!(await connectForRead())) return [];
+        const rows = await model
+            .find(filter)
+            .select({ slug: 1, updatedAt: 1 })
+            .sort(options.sort ?? { updatedAt: -1 })
+            .limit(options.limit)
+            .maxTimeMS(8_000)
+            .lean<SlugRow[]>()
+            .exec();
+        return rows.filter((row) => Boolean(row?.slug));
+    });
 }
 
 /** Distinct values for a field, used by filter facets. */
@@ -187,9 +227,11 @@ export async function distinctLean<T, TValue = string>(
     field: string,
     filter: FilterQuery<T> = {},
 ): Promise<TValue[]> {
-    if (!(await connectForRead())) return [];
-    const values = await model.distinct(field, filter).exec();
-    return (values as TValue[]).filter((value) => value !== null && value !== undefined);
+    return safeRead(`distinct:${field}`, [], async () => {
+        if (!(await connectForRead())) return [];
+        const values = await model.distinct(field, filter).maxTimeMS(8_000).exec();
+        return (values as TValue[]).filter((value) => value !== null && value !== undefined);
+    });
 }
 
 /** Serialises Mongo documents (ObjectId/Date) into RSC-safe plain JSON. */

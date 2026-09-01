@@ -12,6 +12,7 @@ import { assertRuntimeEnv, env, isProduction, isTest } from '@/lib/env';
 type MongooseCache = {
     conn: Mongoose | null;
     promise: Promise<Mongoose> | null;
+    lastFailureAt: number;
 };
 
 declare global {
@@ -22,6 +23,7 @@ declare global {
 const cache: MongooseCache = globalThis.__admissionSathiMongoose ?? {
     conn: null,
     promise: null,
+    lastFailureAt: 0,
 };
 
 if (!isProduction) {
@@ -41,6 +43,14 @@ export async function connectToDatabase(): Promise<Mongoose> {
         return cache.conn;
     }
 
+    // Several repository reads often start together (for example, a listing
+    // page loads facets and results in parallel). After Atlas rejects one
+    // connection attempt, fail those siblings immediately during a short
+    // cooldown instead of opening a new 10-second handshake for each one.
+    if (cache.lastFailureAt && Date.now() - cache.lastFailureAt < 10_000) {
+        throw new Error('MongoDB is temporarily unavailable; retrying shortly.');
+    }
+
     // Placeholder credentials are tolerated while compiling, never for real queries.
     assertRuntimeEnv();
 
@@ -57,7 +67,12 @@ export async function connectToDatabase(): Promise<Mongoose> {
                  * forces these connections open at startup so no request does.
                  */
                 minPoolSize: isProduction ? 5 : 3,
-                serverSelectionTimeoutMS: 10_000,
+                connectTimeoutMS: 6_000,
+                serverSelectionTimeoutMS: 6_000,
+                // Never let a saturated/unreachable pool hold a page request
+                // indefinitely. The repository read layer degrades gracefully
+                // after this bound and logs the original failure.
+                waitQueueTimeoutMS: 5_000,
                 socketTimeoutMS: 45_000,
                 family: 4,
                 /*
@@ -84,10 +99,12 @@ export async function connectToDatabase(): Promise<Mongoose> {
             })
             .then((m) => {
                 // Ensure all model files are registered once the connection is live.
+                cache.lastFailureAt = 0;
                 return m;
             })
             .catch((error: unknown) => {
                 cache.promise = null;
+                cache.lastFailureAt = Date.now();
                 throw error;
             });
     }
@@ -102,6 +119,7 @@ export async function disconnectFromDatabase(): Promise<void> {
         await cache.conn.disconnect();
         cache.conn = null;
         cache.promise = null;
+        cache.lastFailureAt = 0;
     }
 }
 

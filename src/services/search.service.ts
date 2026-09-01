@@ -110,7 +110,14 @@ export async function globalSearch(
         return { term, groups: [], total: 0, tookMs: 0 };
     }
 
-    await connectToDatabase();
+    try {
+        await connectToDatabase();
+    } catch (error) {
+        logger.warn('search.database_unavailable', {
+            error: error instanceof Error ? error.message : String(error),
+        });
+        return { term, groups: [], total: 0, tookMs: Date.now() - started };
+    }
     const limit = options.limitPerGroup ?? 5;
     const types = options.types;
     const want = (t: SearchEntityType) => !types || types.includes(t);

@@ -15,6 +15,7 @@ import {
 import { connectToDatabase } from '@/db/connect';
 import { escapeRegex } from '@/lib/utils';
 import {
+    aggregateLean,
     countDocs,
     findLean,
     findOneLean,
@@ -365,13 +366,13 @@ export async function searchFaqPassages(
     limit = 3,
 ): Promise<Pick<FaqDoc, 'question' | 'answerHtml'>[]> {
     if (keywords.length === 0) return [];
-    await connectToDatabase();
     const rx = new RegExp(keywords.map(escapeRegex).join('|'), 'i');
-    return FAQ.find({ status: 'active', $or: [{ question: rx }, { answerHtml: rx }] })
-        .select({ question: 1, answerHtml: 1, scope: 1 })
-        .limit(limit)
-        .lean<Pick<FaqDoc, 'question' | 'answerHtml'>[]>()
-        .exec();
+    const rows = await findLean<FaqDoc>(
+        FAQ,
+        { status: 'active', $or: [{ question: rx }, { answerHtml: rx }] },
+        { projection: { question: 1, answerHtml: 1, scope: 1 }, limit },
+    );
+    return rows.map((row) => ({ question: row.question, answerHtml: row.answerHtml }));
 }
 
 /* --------------------------------- reviews ------------------------------- */
@@ -463,9 +464,7 @@ export interface ApprovedReviewAggregate {
 
 /** Totals, mean rating and 1–5 star distribution over all approved reviews. */
 export async function aggregateApprovedReviews(): Promise<ApprovedReviewAggregate> {
-    await connectToDatabase();
-
-    const rows = await Review.aggregate<{ _id: number; count: number; sum: number }>([
+    const rows = await aggregateLean<{ _id: number; count: number; sum: number }>(Review, [
         { $match: { moderationStatus: 'approved', isDeleted: { $ne: true } } },
         {
             $group: {
@@ -474,7 +473,7 @@ export async function aggregateApprovedReviews(): Promise<ApprovedReviewAggregat
                 sum: { $sum: '$ratings.overall' },
             },
         },
-    ]).exec();
+    ]);
 
     const total = rows.reduce((sum, row) => sum + row.count, 0);
     const ratingSum = rows.reduce((sum, row) => sum + row.sum, 0);
@@ -593,14 +592,12 @@ export async function aggregateCollegeRating(
 export async function listReviewedColleges(
     limit = 40,
 ): Promise<{ slug: string; name: string; count: number }[]> {
-    await connectToDatabase();
-
-    const rows = await Review.aggregate<{ _id: string; name: string; count: number }>([
+    const rows = await aggregateLean<{ _id: string; name: string; count: number }>(Review, [
         { $match: { moderationStatus: 'approved', isDeleted: { $ne: true } } },
         { $group: { _id: '$collegeSlug', name: { $first: '$collegeName' }, count: { $sum: 1 } } },
         { $sort: { count: -1, name: 1 } },
         { $limit: Math.min(limit, 100) },
-    ]).exec();
+    ]);
 
     return rows.map((row) => ({ slug: row._id, name: row.name, count: row.count }));
 }

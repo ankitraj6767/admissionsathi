@@ -153,13 +153,12 @@ export interface ExamOptionRow {
 export async function listPublishedExamOptions(
     options: { limit?: number; sort?: Record<string, 1 | -1> } = {},
 ): Promise<ExamOptionRow[]> {
-    await connectToDatabase();
-    const query = Exam.find(PUBLISHED).select('shortName slug');
-    if (options.sort) query.sort(options.sort);
-    return query
-        .limit(options.limit ?? 20)
-        .lean<ExamOptionRow[]>()
-        .exec();
+    const rows = await findLean<ExamDoc>(Exam, PUBLISHED, {
+        sort: options.sort ?? { displayOrder: 1 },
+        limit: options.limit ?? 20,
+        projection: { shortName: 1, slug: 1 },
+    });
+    return rows.map((row) => ({ shortName: row.shortName, slug: row.slug }));
 }
 
 export interface ExamDirectoryRow {
@@ -176,13 +175,18 @@ export interface ExamDirectoryRow {
  * projection for filter dropdowns.
  */
 export async function listExamDirectoryRows(limit = 80): Promise<ExamDirectoryRow[]> {
-    await connectToDatabase();
-    return Exam.find(PUBLISHED)
-        .select('shortName slug category acceptedByCollegeCount')
-        .sort({ displayOrder: 1, shortName: 1 })
-        .limit(limit)
-        .lean<ExamDirectoryRow[]>()
-        .exec();
+    const rows = await findLean<ExamDoc>(Exam, PUBLISHED, {
+        sort: { displayOrder: 1, shortName: 1 },
+        limit,
+        projection: { shortName: 1, slug: 1, category: 1, acceptedByCollegeCount: 1 },
+    });
+    return rows.map((row) => ({
+        _id: row._id,
+        shortName: row.shortName,
+        slug: row.slug,
+        category: row.category,
+        acceptedByCollegeCount: row.acceptedByCollegeCount,
+    }));
 }
 
 /** Resolves an exam slug to its id, for filter params that arrive as slugs. */
