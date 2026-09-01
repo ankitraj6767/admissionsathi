@@ -1,5 +1,6 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
+import { siteConfig } from '@/config/site';
 import {
     searchArticlePassages,
     searchFaqPassages,
@@ -7,8 +8,8 @@ import {
     searchResourcePassages,
 } from '@/db/repositories/content.repository';
 import { getCollegeBySlug, listColleges, listFeaturedColleges } from '@/db/repositories/college.repository';
-import { getCourseBySlug, listFeaturedCourses } from '@/db/repositories/course.repository';
-import { getExamBySlug, listFeaturedExams } from '@/db/repositories/exam.repository';
+import { getCourseBySlug, listCourses, listFeaturedCourses } from '@/db/repositories/course.repository';
+import { getExamBySlug, listExams, listFeaturedExams } from '@/db/repositories/exam.repository';
 import {
     getScholarshipBySlug,
     listFeaturedScholarshipRows,
@@ -50,7 +51,7 @@ export interface RetrievedPassage {
     label: string;
     url: string;
     text: string;
-    kind?: SearchHit['type'] | 'faq' | 'news' | 'resource' | 'loan';
+    kind?: SearchHit['type'] | 'faq' | 'news' | 'resource' | 'loan' | 'contact' | 'stat';
 }
 
 export interface AiAnswer {
@@ -249,6 +250,84 @@ function retrievalKeywords(question: string): string[] {
     const extracted = extractKeywords(question, 8);
     const topicTerms = DOMAIN_SEARCH_TERMS.filter((term) => normalized.includes(term));
     return Array.from(new Set([...extracted, ...topicTerms])).slice(0, 8);
+}
+
+/**
+ * Operational facts are not articles, so keyword search is the wrong source
+ * for them. Read these values directly from the same settings and published
+ * collections used by the public site whenever the question asks for them.
+ */
+async function retrieveOperationalFacts(question: string): Promise<RetrievedPassage[]> {
+    const normalized = question.toLowerCase();
+    const passages: RetrievedPassage[] = [];
+
+    if (/\b(phone|mobile|helpline|help\s*line|contact|call|whatsapp|support\s+(number|team))\b/.test(normalized)) {
+        try {
+            const settings = await getSettings();
+            const phone = readString(settings, 'contact.phone', siteConfig.defaults.supportPhone);
+            const whatsapp = readString(settings, 'contact.whatsappNumber', phone);
+            const email = readString(settings, 'contact.email', siteConfig.defaults.supportEmail);
+            const hours = readString(settings, 'contact.workingHours', '');
+            passages.push({
+                label: 'Contact Admission Sathi',
+                url: '/contact',
+                kind: 'contact',
+                text: compactFacts([
+                    `Support phone: ${phone}`,
+                    `WhatsApp: ${whatsapp}`,
+                    `Email: ${email}`,
+                    hours ? `Working hours: ${hours}` : null,
+                ], 1_200),
+            });
+        } catch {
+            // The public defaults still make the contact answer useful if the
+            // settings collection is temporarily unavailable.
+            passages.push({
+                label: 'Contact Admission Sathi',
+                url: '/contact',
+                kind: 'contact',
+                text: `Support phone: ${siteConfig.defaults.supportPhone}\nEmail: ${siteConfig.defaults.supportEmail}`,
+            });
+        }
+    }
+
+    const asksForCount = /\b(how\s+many|number\s+of|count|total|listed)\b/.test(normalized);
+    if (asksForCount) {
+        try {
+            if (/\b(college|colleges|university|universities|institute|institutes)\b/.test(normalized)) {
+                const result = await listColleges({ page: 1, pageSize: 1, sort: 'relevance' });
+                passages.push({
+                    label: 'Admission Sathi college directory',
+                    url: '/colleges',
+                    kind: 'stat',
+                    text: `Published colleges listed on Admission Sathi: ${result.total}.`,
+                });
+            }
+            if (/\b(course|courses|degree|degrees)\b/.test(normalized)) {
+                const result = await listCourses({ page: 1, pageSize: 1 });
+                passages.push({
+                    label: 'Admission Sathi course directory',
+                    url: '/courses',
+                    kind: 'stat',
+                    text: `Published courses listed on Admission Sathi: ${result.total}.`,
+                });
+            }
+            if (/\b(exam|exams|entrance|tests?)\b/.test(normalized)) {
+                const result = await listExams({ page: 1, pageSize: 1 });
+                passages.push({
+                    label: 'Admission Sathi exam directory',
+                    url: '/exams',
+                    kind: 'stat',
+                    text: `Published exams listed on Admission Sathi: ${result.total}.`,
+                });
+            }
+        } catch {
+            // Retrieval remains best-effort; the model can still use matching
+            // entity pages if a count query cannot be completed.
+        }
+    }
+
+    return passages;
 }
 
 const FOLLOW_UP_TOPICS = new Set([
@@ -681,6 +760,15 @@ function passageRelevance(passage: RetrievedPassage, question: string): number {
     if (kind === 'predictor') score += 22;
     if (kind && ['college', 'course', 'exam', 'scholarship', 'city', 'state'].includes(kind)) score += 10;
     if (kind === 'faq') score += 4;
+    if (kind === 'contact') score += 75;
+    if (kind === 'stat') score += 65;
+
+    if (/\b(phone|mobile|helpline|help\s*line|contact|call|whatsapp|support|email)\b/.test(normalized) && kind === 'contact') {
+        score += 120;
+    }
+    if (/\b(how\s+many|number\s+of|count|total|listed)\b/.test(normalized) && kind === 'stat') {
+        score += 120;
+    }
 
     if (/\b(predict(or|ion)?|percentile|rank|score|chance|which colleges?)\b/.test(normalized) && kind === 'predictor') {
         score += 60;
@@ -707,10 +795,10 @@ export async function retrieveContext(question: string, conversationContext?: st
     const retrievalQuestion = [question, conversationContext].filter(Boolean).join(' ');
     const extractedKeywords = extractKeywords(retrievalQuestion, 8);
     const keywords = retrievalKeywords(retrievalQuestion);
-    const searchTerms = keywords.slice(0, 3);
+    const searchTerms = keywords.slice(0, 5);
     const broadMatches = extractedKeywords.length === 0 ? await retrieveBroadMatches(question) : [];
 
-    const [searches, faqs, articles, news, resources, loans, predictors] = await Promise.all([
+    const [searches, faqs, articles, news, resources, loans, predictors, operationalFacts] = await Promise.all([
         Promise.all(
             (searchTerms.length > 0 ? searchTerms : [retrievalQuestion.slice(0, 60)]).map((term) =>
                 globalSearch(term, { limitPerGroup: 3 }).catch(() => null),
@@ -722,6 +810,7 @@ export async function retrieveContext(question: string, conversationContext?: st
         searchResourcePassages(keywords, 3).catch(() => []),
         retrieveLoans(retrievalQuestion, keywords),
         retrievePredictors(retrievalQuestion),
+        retrieveOperationalFacts(question),
     ]);
 
     const hits = searches
@@ -762,6 +851,7 @@ export async function retrieveContext(question: string, conversationContext?: st
     const loanPassages = loans.map((passage) => ({ ...passage, kind: 'loan' as const }));
 
     const all = [
+        ...operationalFacts,
         ...broadMatches,
         ...entityPassages,
         ...predictors,
@@ -822,6 +912,44 @@ const NO_CONTEXT_REPLY =
     'A counsellor can answer it properly — you can [book a free session](/book-counselling) or ' +
     '[browse our guides](/articles).';
 
+function deterministicOperationalAnswer(question: string, contextBlock: string, fallbackNotice?: string): string | null {
+    const normalized = question.toLowerCase();
+    const contactBlock = contextBlock
+        .split('\n\n')
+        .find((block) => block.includes('Contact Admission Sathi'));
+    if (contactBlock && /\b(phone|mobile|helpline|help\s*line|contact|call|whatsapp|support|email)\b/.test(normalized)) {
+        const phone = contactBlock.match(/Support phone:\s*([^\n]+)/i)?.[1];
+        const whatsapp = contactBlock.match(/WhatsApp:\s*([^\n]+)/i)?.[1];
+        const email = contactBlock.match(/Email:\s*([^\n]+)/i)?.[1];
+        const hours = contactBlock.match(/Working hours:\s*([^\n]+)/i)?.[1];
+        const details = [
+            phone ? `phone **${phone}**` : null,
+            whatsapp && whatsapp !== phone ? `WhatsApp **${whatsapp}**` : null,
+            email ? `email **${email}**` : null,
+            hours ? `hours: ${hours}` : null,
+        ].filter(Boolean);
+        if (details.length > 0) {
+            return `You can reach Admission Sathi via ${details.join(', ')}. See the [Contact page](/contact) for the latest support details.${fallbackNotice ? `\n\n_${fallbackNotice}_` : ''}`;
+        }
+    }
+
+    if (/\b(how\s+many|number\s+of|count|total|listed)\b/.test(normalized)) {
+        const matches = [...contextBlock.matchAll(/Published (colleges|courses|exams) listed on Admission Sathi:\s*(\d+)/gi)];
+        const requested = matches.filter((match) => {
+            if (/\b(college|colleges|university|universities|institute|institutes)\b/.test(normalized)) return match[1].startsWith('college');
+            if (/\b(course|courses|degree|degrees)\b/.test(normalized)) return match[1].startsWith('course');
+            if (/\b(exam|exams|entrance|tests?)\b/.test(normalized)) return match[1].startsWith('exam');
+            return true;
+        });
+        if (requested.length > 0) {
+            const values = requested.map((match) => `**${match[2]}** published ${match[1]}`).join(', ');
+            return `Admission Sathi currently lists ${values}. This is a live directory total and can change as records are published. See the [directory](/${requested[0]![1].startsWith('college') ? 'colleges' : requested[0]![1].startsWith('course') ? 'courses' : 'exams'}).${fallbackNotice ? `\n\n_${fallbackNotice}_` : ''}`;
+        }
+    }
+
+    return null;
+}
+
 /**
  * Extractive fallback assistant.
  * It never writes new facts: it stitches together the retrieved passages and
@@ -833,6 +961,9 @@ const mockAdapter: ProviderAdapter = {
     model: 'extractive-retrieval',
     async complete({ contextBlock, question, fallbackNotice }) {
         if (contextBlock === 'NO CONTEXT AVAILABLE.') return NO_CONTEXT_REPLY;
+
+        const operationalAnswer = deterministicOperationalAnswer(question, contextBlock, fallbackNotice);
+        if (operationalAnswer) return operationalAnswer;
 
         const blocks = contextBlock.split('\n\n').slice(0, 4);
         const lines = blocks.map((block) => {
@@ -861,6 +992,7 @@ function buildMessages({ systemPrompt, contextBlock, history, question, allowGen
     const canAnswerGeneral = !hasWebsiteContext && allowGeneralResponse === true;
     const system = [
         systemPrompt,
+        'IMPORTANT: The request-specific rules below override any conflicting wording in the base prompt.',
         ...(canAnswerGeneral
             ? ['GENERAL ANSWER MODE: No relevant website passage was retrieved for this question. You may answer from your general model knowledge, while clearly separating it from Admission Sathi content.']
             : []),
