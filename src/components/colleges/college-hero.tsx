@@ -20,27 +20,22 @@ export function CollegeHero({ college }: { college: CollegeDoc }) {
         <section className="relative border-b border-navy-900/40 bg-navy-800 text-white">
             {/*
               Banner is decorative: the heading already names the college, so an
-              empty alt keeps it out of the accessibility tree. The navy scrim
-              guarantees the text keeps its contrast ratio over any photo.
+              empty alt keeps it out of the accessibility tree. The photo is left
+              unobscured; text shadows and the local action-panel surface provide
+              contrast without tinting the full banner.
             */}
             {banner ? (
-                <>
-                    <Image
-                        src={banner}
-                        alt=""
-                        fill
-                        priority
-                        sizes="100vw"
-                        className="object-cover"
-                    />
-                    <span
-                        aria-hidden
-                        className="absolute inset-0 bg-gradient-to-r from-navy-900/95 via-navy-800/90 to-navy-800/75"
-                    />
-                </>
+                <Image
+                    src={banner}
+                    alt=""
+                    fill
+                    priority
+                    sizes="100vw"
+                    className="object-cover"
+                />
             ) : null}
 
-            <div className="relative shell py-6">
+            <div className="relative shell py-6 [text-shadow:0_1px_3px_rgb(0_0_0/0.9)]">
                 <Breadcrumbs
                     tone="dark"
                     className="mb-4"
@@ -120,7 +115,7 @@ export function CollegeHero({ college }: { college: CollegeDoc }) {
                         </div>
                     </div>
 
-                    <div className="shrink-0 rounded-panel border border-white/12 bg-white/5 p-3">
+                    <div className="shrink-0 rounded-panel border border-white/25 bg-black/35 p-3 backdrop-blur-[2px]">
                         <dl className="grid grid-cols-2 gap-x-5 gap-y-2 text-white">
                             <div>
                                 <dt className="text-[10px] uppercase tracking-wide text-white/55">Fee (from)</dt>
