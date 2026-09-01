@@ -164,7 +164,7 @@ step.
 | Variable | Required | Scope | Purpose | Example |
 | --- | --- | --- | --- | --- |
 | `AI_PROVIDER` | No (default `mock`) | server | `mock` \| `nvidia` \| `openai` \| `anthropic` \| `bedrock`. `mock` is an extractive retrieval answerer that never invents facts. `bedrock` has no adapter and falls back to `mock` | `nvidia` |
-| `AI_MODEL` | No (default `gpt-4o-mini`) | server | Model id passed to the selected provider | `moonshotai/kimi-k2.5` |
+| `AI_MODEL` | No (default `gpt-4o-mini`) | server | Model id passed to the selected provider | `meta/llama-3.1-8b-instruct` |
 | `NVIDIA_API_KEY` | Only for `nvidia` | server | NVIDIA NIM bearer token. Missing key safely falls back to the `mock` adapter | `nvapi-…` |
 | `NVIDIA_BASE_URL` | No | server | OpenAI-compatible NIM API base URL | `https://integrate.api.nvidia.com/v1` |
 | `OPENAI_API_KEY` | Only for `openai` | server | Missing key silently falls back to the `mock` adapter | `sk-…` |

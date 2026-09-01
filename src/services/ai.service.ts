@@ -51,6 +51,7 @@ export interface RetrievedPassage {
     label: string;
     url: string;
     text: string;
+    kind?: SearchHit['type'] | 'faq' | 'news' | 'resource' | 'loan';
 }
 
 export interface AiAnswer {
@@ -167,6 +168,51 @@ export function moderateQuestion(question: string): ModerationVerdict {
     return { allowed: true };
 }
 
+export type AssistantConversationIntent =
+    | 'identity'
+    | 'greeting'
+    | 'thanks'
+    | 'goodbye'
+    | 'admission_question';
+
+/** Cheap conversational routing keeps social messages out of database retrieval. */
+export function classifyAssistantIntent(question: string): AssistantConversationIntent {
+    const normalized = question
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .replace(/\s+/g, ' ');
+
+    if (
+        /^(who|ho|what) (are|r) you$/.test(normalized) ||
+        /^(what is|what s|tell me) your name$/.test(normalized) ||
+        /^(what can you do|how can you help me)$/.test(normalized)
+    ) {
+        return 'identity';
+    }
+    if (/^(hi|hello|hey|hii+|good morning|good afternoon|good evening|how are you)$/.test(normalized)) {
+        return 'greeting';
+    }
+    if (/^(thanks|thank you|thankyou|great thanks|okay thanks|ok thanks)$/.test(normalized)) {
+        return 'thanks';
+    }
+    if (/^(bye|goodbye|see you|see you later)$/.test(normalized)) return 'goodbye';
+    return 'admission_question';
+}
+
+function conversationalReply(intent: Exclude<AssistantConversationIntent, 'admission_question'>): string {
+    if (intent === 'thanks') {
+        return 'You’re welcome! Ask me anything else about colleges, courses, exams, scholarships, education loans or admissions.';
+    }
+    if (intent === 'goodbye') {
+        return 'Goodbye, and all the best for your admission journey! You can return whenever you need guidance.';
+    }
+    if (intent === 'greeting') {
+        return 'Hi! I’m Admission Sathi AI. I can help you explore colleges, courses, exams, eligibility, fees, scholarships, predictors and education loans using information published on Admission Sathi. What would you like to know?';
+    }
+    return 'I’m Admission Sathi AI, a website-grounded admission and career guidance assistant. I answer using Admission Sathi’s published college, course, exam, scholarship, predictor, loan and guidance data—and I show the pages behind my answers.';
+}
+
 /* ------------------------------------------------------------------ *
  * Retrieval — everything the model may use comes from our own data.
  * ------------------------------------------------------------------ */
@@ -179,6 +225,7 @@ const STOP_WORDS = new Set([
     'give', 'want', 'need', 'help', 'there', 'this', 'that', 'these', 'those', 'any', 'all',
     'admission', 'admissions', 'eligibility', 'eligible', 'criteria', 'requirement', 'requirements',
     'fee', 'fees', 'cost', 'details', 'information', 'process', 'website', 'data', 'available',
+    'college', 'colleges', 'course', 'courses', 'exam', 'exams',
 ]);
 
 export function extractKeywords(question: string, limit = 6): string[] {
@@ -192,6 +239,33 @@ export function extractKeywords(question: string, limit = 6): string[] {
     return Array.from(new Set(words)).slice(0, limit);
 }
 
+const FOLLOW_UP_TOPICS = new Set([
+    'admission', 'admissions', 'application', 'apply', 'approval', 'approvals', 'campus', 'cutoff',
+    'cutoffs', 'date', 'dates', 'eligibility', 'eligible', 'facility', 'facilities', 'faculty', 'fee',
+    'fees', 'hostel', 'location', 'package', 'packages', 'placement', 'placements', 'ranking', 'rankings',
+    'scholarship', 'scholarships', 'seat', 'seats', 'syllabus',
+]);
+
+/**
+ * Previous turns are useful for "what about fees?", but harmful when the user
+ * changes topic. Only carry history when the current turn contains no new entity.
+ */
+export function shouldUseConversationContext(question: string): boolean {
+    if (classifyAssistantIntent(question) !== 'admission_question') return false;
+    const normalized = question.trim().toLowerCase();
+    const explicitFollowUp =
+        /^(and|also|then|what about|how about)\b/.test(normalized) ||
+        /\b(it|its|this|that|they|their|there)\b/.test(normalized);
+    const keywords = extractKeywords(question, 10);
+    const containsNewEntity = keywords.some((keyword) => !FOLLOW_UP_TOPICS.has(keyword));
+    const onlyDetailRequest =
+        /\b(fee|fees|eligibility|cut-?offs?|placements?|hostel|facilities|ranking|scholarships?|admissions?|dates?)\b/.test(
+            normalized,
+        ) && !containsNewEntity;
+
+    return (explicitFollowUp || onlyDetailRequest) && !containsNewEntity;
+}
+
 async function retrieveFaqs(keywords: string[], limit = 3): Promise<RetrievedPassage[]> {
     if (keywords.length === 0) return [];
     try {
@@ -201,6 +275,7 @@ async function retrieveFaqs(keywords: string[], limit = 3): Promise<RetrievedPas
             label: `FAQ — ${row.question}`,
             url: '/faqs',
             text: truncate(stripHtml(row.answerHtml), 500),
+            kind: 'faq' as const,
         }));
     } catch {
         return [];
@@ -216,6 +291,7 @@ async function retrieveArticles(keywords: string[], limit = 3): Promise<Retrieve
             label: row.title,
             url: `/articles/${row.slug}`,
             text: truncate(row.excerpt ? row.excerpt : stripHtml(row.contentHtml), 600),
+            kind: 'article' as const,
         }));
     } catch {
         return [];
@@ -228,6 +304,7 @@ function hitToPassage(hit: SearchHit): RetrievedPassage {
         label: hit.label,
         url: hit.url,
         text: bits ? `${hit.label} (${bits}). Listed on Admission Sathi at ${hit.url}.` : `${hit.label} — ${hit.url}`,
+        kind: hit.type,
     };
 }
 
@@ -499,7 +576,7 @@ async function retrievePredictors(question: string, limit = 3): Promise<Retrieve
                     label: predictor.name,
                     sublabel: predictor.subtitle,
                     url: `/predictors/${predictor.slug}`,
-                }),
+                }).then((passage) => ({ ...passage, kind: 'predictor' as const })),
             ),
         );
     } catch {
@@ -507,14 +584,69 @@ async function retrievePredictors(question: string, limit = 3): Promise<Retrieve
     }
 }
 
+function scoreToken(value: string): string {
+    if (value.endsWith('ies') && value.length > 4) return `${value.slice(0, -3)}y`;
+    if (value.endsWith('s') && value.length > 4) return value.slice(0, -1);
+    return value;
+}
+
+function scoreTokens(value: string): Set<string> {
+    return new Set(
+        value
+            .toLowerCase()
+            .replace(/[^a-z0-9+.\s-]/g, ' ')
+            .split(/\s+/)
+            .filter((token) => token.length > 1)
+            .map(scoreToken),
+    );
+}
+
+function passageRelevance(passage: RetrievedPassage, question: string): number {
+    const queryTokens = scoreTokens(question);
+    const labelTokens = scoreTokens(passage.label);
+    const textTokens = scoreTokens(passage.text.slice(0, 1_800));
+    let score = 0;
+
+    queryTokens.forEach((token) => {
+        if (labelTokens.has(token)) score += 14;
+        if (textTokens.has(token)) score += 2;
+    });
+
+    const normalized = question.toLowerCase();
+    const kind = passage.kind;
+    if (kind === 'predictor') score += 22;
+    if (kind && ['college', 'course', 'exam', 'scholarship', 'city', 'state'].includes(kind)) score += 10;
+    if (kind === 'faq') score += 4;
+
+    if (/\b(predict(or|ion)?|percentile|rank|score|chance|which colleges?)\b/.test(normalized) && kind === 'predictor') {
+        score += 60;
+    }
+    if (/\b(jee|neet|cat|cuet|clat|gate|exam|admit card|answer key|result)\b/.test(normalized) && kind === 'exam') {
+        score += 28;
+    }
+    if (/\b(college|colleges|campus|hostel|placement|ranking|nirf)\b/.test(normalized) && kind === 'college') {
+        score += 24;
+    }
+    if (/\b(course|courses|degree|syllabus|career|job roles?|eligibility)\b/.test(normalized) && kind === 'course') {
+        score += 24;
+    }
+    if (/\b(scholarship|grant|financial aid)\b/.test(normalized) && kind === 'scholarship') score += 36;
+    if (/\b(loan|finance|emi|interest|collateral|bank|nbfc)\b/.test(normalized) && kind === 'loan') score += 40;
+    if (/\b(news|latest|update|deadline|registration)\b/.test(normalized) && kind === 'news') score += 20;
+    if (/\b(paper|mock test|resource|download|preparation)\b/.test(normalized) && kind === 'resource') score += 20;
+
+    return score;
+}
+
 /** Gathers platform passages relevant to the question. */
-export async function retrieveContext(question: string): Promise<RetrievedPassage[]> {
-    const keywords = extractKeywords(question, 8);
+export async function retrieveContext(question: string, conversationContext?: string): Promise<RetrievedPassage[]> {
+    const retrievalQuestion = [question, conversationContext].filter(Boolean).join(' ');
+    const keywords = extractKeywords(retrievalQuestion, 8);
     const searchTerms = keywords.slice(0, 3);
 
     const [searches, faqs, articles, news, resources, loans, predictors] = await Promise.all([
         Promise.all(
-            (searchTerms.length > 0 ? searchTerms : [question.slice(0, 60)]).map((term) =>
+            (searchTerms.length > 0 ? searchTerms : [retrievalQuestion.slice(0, 60)]).map((term) =>
                 globalSearch(term, { limitPerGroup: 3 }).catch(() => null),
             ),
         ),
@@ -522,17 +654,21 @@ export async function retrieveContext(question: string): Promise<RetrievedPassag
         retrieveArticles(keywords),
         searchNewsPassages(keywords, 3).catch(() => []),
         searchResourcePassages(keywords, 3).catch(() => []),
-        retrieveLoans(question, keywords),
-        retrievePredictors(question),
+        retrieveLoans(retrievalQuestion, keywords),
+        retrievePredictors(retrievalQuestion),
     ]);
 
     const hits = searches
         .flatMap((search) => search?.groups ?? [])
         .flatMap((group) => group.hits.slice(0, 3))
+        // Articles are retrieved separately with their real excerpt/content.
+        .filter((hit) => hit.type !== 'article')
         .filter((hit, index, allHits) => allHits.findIndex((candidate) => candidate.url === hit.url) === index)
         .slice(0, 8);
 
-    const entityPassages = await Promise.all(hits.map(enrichHit));
+    const entityPassages = await Promise.all(
+        hits.map(async (hit) => ({ ...(await enrichHit(hit)), kind: hit.type })),
+    );
     const newsPassages: RetrievedPassage[] = news.map((row) => ({
         label: row.title,
         url: `/news/${row.slug}`,
@@ -541,6 +677,7 @@ export async function retrieveContext(question: string): Promise<RetrievedPassag
             valueFact('Published', dateValue(row.publishDate)),
             textFact('Update', row.summary ?? row.contentHtml, 1_000),
         ], 1_400),
+        kind: 'news',
     }));
     const resourcePassages: RetrievedPassage[] = resources.map((row) => ({
         label: row.title,
@@ -553,7 +690,10 @@ export async function retrieveContext(question: string): Promise<RetrievedPassag
             valueFact('Access', row.isFree ? 'Free' : row.price !== undefined ? formatCompactINR(row.price) : 'Paid'),
             textFact('Description', row.description ?? row.contentHtml, 1_000),
         ], 1_500),
+        kind: 'resource',
     }));
+
+    const loanPassages = loans.map((passage) => ({ ...passage, kind: 'loan' as const }));
 
     const all = [
         ...entityPassages,
@@ -562,16 +702,22 @@ export async function retrieveContext(question: string): Promise<RetrievedPassag
         ...articles,
         ...newsPassages,
         ...resourcePassages,
-        ...loans,
+        ...loanPassages,
     ];
 
-    // De-duplicate by URL, keep the richest passage first.
+    // De-duplicate then rank for this question. The bounded result keeps model
+    // latency predictable even when broad terms match many website sections.
     const seen = new Set<string>();
-    return all.filter((passage) => {
-        if (seen.has(passage.url)) return false;
-        seen.add(passage.url);
-        return true;
-    });
+    return all
+        .filter((passage) => {
+            if (seen.has(passage.url)) return false;
+            seen.add(passage.url);
+            return true;
+        })
+        .map((passage, index) => ({ passage, index, score: passageRelevance(passage, retrievalQuestion) }))
+        .sort((left, right) => right.score - left.score || left.index - right.index)
+        .slice(0, 12)
+        .map(({ passage }) => passage);
 }
 
 function buildContextBlock(passages: RetrievedPassage[]): string {
@@ -593,6 +739,7 @@ interface ProviderRequest {
     history: AiMessage[];
     question: string;
     abortSignal?: AbortSignal;
+    fallbackNotice?: string;
 }
 
 interface ProviderAdapter {
@@ -616,7 +763,7 @@ const NO_CONTEXT_REPLY =
 const mockAdapter: ProviderAdapter = {
     id: 'mock',
     model: 'extractive-retrieval',
-    async complete({ contextBlock, question }) {
+    async complete({ contextBlock, question, fallbackNotice }) {
         if (contextBlock === 'NO CONTEXT AVAILABLE.') return NO_CONTEXT_REPLY;
 
         const blocks = contextBlock.split('\n\n').slice(0, 4);
@@ -629,14 +776,15 @@ const mockAdapter: ProviderAdapter = {
         });
 
         return [
-            `Here is what Admission Sathi has on “${truncate(question, 90)}”:`,
+            fallbackNotice,
+            `Admission Sathi source matches for “${truncate(question, 90)}”:`,
             '',
             ...lines,
             '',
             'These pages carry the detail, including the parts that change every year. ' +
             'If you want this narrowed down to your marks, budget and preferred state, ' +
             '[book a free counselling session](/book-counselling).',
-        ].join('\n');
+        ].filter((line) => line !== undefined && line !== '').join('\n');
     },
 };
 
@@ -682,7 +830,7 @@ function nvidiaGenerationOptions(request: ProviderRequest) {
     return {
         model: createNvidiaModel(),
         messages: buildMessages(request),
-        maxOutputTokens: 900,
+        maxOutputTokens: 450,
         temperature: isKimi ? 0.6 : 0.2,
         maxRetries: 1,
         abortSignal: request.abortSignal,
@@ -864,11 +1012,32 @@ async function prepareAssistant(input: AskInput): Promise<PreparedAssistant> {
         };
     }
 
-    const recentUserContext = (input.history ?? [])
-        .filter((message) => message.role === 'user')
-        .slice(-2)
-        .map((message) => message.content);
-    const passages = await retrieveContext([input.question, ...recentUserContext].join(' '));
+    const intent = classifyAssistantIntent(input.question);
+    if (intent !== 'admission_question') {
+        return {
+            sessionId,
+            adapter: mockAdapter,
+            sources: [],
+            grounded: true,
+            immediate: {
+                sessionId,
+                answer: conversationalReply(intent),
+                sources: [],
+                grounded: true,
+                provider: 'conversation-router',
+                model: 'deterministic',
+            },
+        };
+    }
+
+    const recentUserContext = shouldUseConversationContext(input.question)
+        ? (input.history ?? [])
+            .filter((message) => message.role === 'user')
+            .slice(-2)
+            .map((message) => message.content)
+            .join(' ')
+        : undefined;
+    const passages = await retrieveContext(input.question, recentUserContext);
     const sources = sourcesFrom(passages);
     if (passages.length === 0) {
         return {
@@ -890,6 +1059,11 @@ async function prepareAssistant(input: AskInput): Promise<PreparedAssistant> {
     const contextBlock = buildContextBlock(passages);
     const systemPrompt = await getSystemPrompt();
     const adapter = adapterFor(config.provider);
+    const fallbackNotice = adapter.id === 'mock'
+        ? config.provider === 'mock'
+            ? 'The live model is not connected in this environment, so I’m showing verified Admission Sathi source matches.'
+            : `The ${config.provider} model is not configured, so I’m showing verified Admission Sathi source matches.`
+        : undefined;
 
     return {
         sessionId,
@@ -902,6 +1076,7 @@ async function prepareAssistant(input: AskInput): Promise<PreparedAssistant> {
             history: input.history ?? [],
             question: input.question,
             abortSignal: input.abortSignal,
+            fallbackNotice,
         },
     };
 }
@@ -917,7 +1092,10 @@ async function completePrepared(prepared: PreparedAssistant): Promise<string> {
             provider: prepared.adapter.id,
             error: error instanceof Error ? error.message : String(error),
         });
-        return mockAdapter.complete(request);
+        return mockAdapter.complete({
+            ...request,
+            fallbackNotice: 'The live AI model was unavailable, so I’m showing verified Admission Sathi source matches.',
+        });
     }
 }
 
@@ -989,7 +1167,10 @@ export async function streamAssistant(input: AskInput): Promise<AiAnswerStream> 
             }
 
             if (!emitted) {
-                yield await mockAdapter.complete(request);
+                yield await mockAdapter.complete({
+                    ...request,
+                    fallbackNotice: 'The live AI model was unavailable, so I’m showing verified Admission Sathi source matches.',
+                });
             }
         })();
     } else {
