@@ -81,7 +81,7 @@ const FALLBACK_SYSTEM_PROMPT =
     'You are Admission Sathi AI, an admission guidance assistant for Indian students. ' +
     'Answer only from the provided platform context. Never invent ranks, cut-offs, fees or eligibility. ' +
     'If the context is insufficient, say so and offer a free counselling session. ' +
-    'Always cite the source links provided in the context.';
+    'Always cite the source links provided in the context. Write like a polished human counsellor, not a retrieval system.';
 
 export async function getAiConfig(): Promise<AiConfig> {
     const settings = await getSettings();
@@ -884,6 +884,43 @@ function buildContextBlock(passages: RetrievedPassage[]): string {
         .join('\n\n');
 }
 
+/** Removes common retrieval-system boilerplate from a model's opening sentence. */
+function polishGeneratedAnswer(answer: string): string {
+    return answer
+        .trim()
+        .replace(
+            /^\s*(?:according to (?:the )?(?:provided )?(?:context|information|data)|based on (?:the )?(?:provided )?(?:context|information|data)|from the (?:provided )?(?:context|information|data))\s*[:,—-]?\s*/i,
+            '',
+        )
+        .trim();
+}
+
+/** Buffers the opening of a stream so boilerplate can be removed cleanly even
+ * when the provider splits it across several SSE tokens. */
+async function* polishAnswerStream(chunks: AsyncIterable<string>): AsyncIterable<string> {
+    let opening = '';
+    let released = false;
+
+    for await (const chunk of chunks) {
+        if (released) {
+            yield chunk;
+            continue;
+        }
+
+        opening += chunk;
+        if (/[.!?]\s/.test(opening) || opening.length >= 180) {
+            const polished = polishGeneratedAnswer(opening);
+            if (polished) yield polished;
+            released = true;
+        }
+    }
+
+    if (!released && opening) {
+        const polished = polishGeneratedAnswer(opening);
+        if (polished) yield polished;
+    }
+}
+
 /* ------------------------------------------------------------------ *
  * Provider adapters
  * Every adapter receives exactly the same grounded prompt so switching
@@ -1020,6 +1057,7 @@ function buildMessages({ systemPrompt, contextBlock, history, question, allowGen
         '10. For recommendations, explain the criteria used and state which personal details would change the recommendation.',
         '11. Use concise headings or bullets where helpful; avoid filler and repeated disclaimers.',
         '12. If the question is underspecified, give useful guidance first and ask at most one focused follow-up question.',
+        '13. Never start with phrases such as "According to the provided context", "Based on the context" or "The context says". State the answer naturally, then cite a page inline when useful.',
         '',
         'CONTEXT:',
         contextBlock,
@@ -1125,7 +1163,7 @@ function nvidiaResponseText(payload: unknown): string {
 async function nvidiaComplete(request: ProviderRequest): Promise<string> {
     const response = await nvidiaRequest(request, false);
     const payload = (await response.json()) as unknown;
-    const text = nvidiaResponseText(payload).trim();
+    const text = polishGeneratedAnswer(nvidiaResponseText(payload));
     if (!text) throw new NvidiaApiError(502, 'NVIDIA returned a response without message content.');
     return text;
 }
@@ -1238,7 +1276,7 @@ const openaiAdapter: ProviderAdapter = {
 
         if (!res.ok) throw new Error(`OpenAI responded ${res.status}`);
         const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-        return data.choices?.[0]?.message?.content?.trim() || NO_CONTEXT_REPLY;
+        return polishGeneratedAnswer(data.choices?.[0]?.message?.content ?? '') || NO_CONTEXT_REPLY;
     },
 };
 
@@ -1269,7 +1307,7 @@ const anthropicAdapter: ProviderAdapter = {
 
         if (!res.ok) throw new Error(`Anthropic responded ${res.status}`);
         const data = (await res.json()) as { content?: { text?: string }[] };
-        return data.content?.map((part) => part.text ?? '').join('').trim() || NO_CONTEXT_REPLY;
+        return polishGeneratedAnswer(data.content?.map((part) => part.text ?? '').join('') ?? '') || NO_CONTEXT_REPLY;
     },
 };
 
@@ -1498,7 +1536,7 @@ export async function streamAssistant(input: AskInput): Promise<AiAnswerStream> 
             let emitted = false;
             let providerError: unknown;
             try {
-                for await (const chunk of providerStream) {
+                for await (const chunk of polishAnswerStream(providerStream)) {
                     if (!chunk) continue;
                     emitted = true;
                     yield chunk;
