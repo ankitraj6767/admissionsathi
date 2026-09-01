@@ -835,15 +835,29 @@ function nvidiaEndpoint(): string {
         .replace(/\/$/, '')}/chat/completions`;
 }
 
+const NVIDIA_MODEL_ALIASES: Record<string, string> = {
+    // NVIDIA's hosted catalog retired the K2.5 id; keep existing deployments
+    // working while they migrate their environment variable to K2.6.
+    'moonshotai/kimi-k2.5': 'moonshotai/kimi-k2.6',
+};
+
+function nvidiaModel(): string {
+    const configured = env.AI_MODEL.trim();
+    return NVIDIA_MODEL_ALIASES[configured] ?? configured;
+}
+
 function nvidiaRequestBody(request: ProviderRequest, stream: boolean) {
-    const isKimi = env.AI_MODEL.trim() === 'moonshotai/kimi-k2.5';
+    const model = nvidiaModel();
+    const isKimi25 = model === 'moonshotai/kimi-k2.5';
+    const isKimi26 = model === 'moonshotai/kimi-k2.6';
     return {
-        model: env.AI_MODEL.trim(),
+        model,
         messages: buildMessages(request),
         max_tokens: 450,
-        temperature: isKimi ? 0.6 : 0.2,
+        temperature: isKimi25 || isKimi26 ? 0.6 : 0.2,
         stream,
-        ...(isKimi ? { thinking: { type: 'disabled' } } : {}),
+        ...(isKimi25 ? { thinking: { type: 'disabled' } } : {}),
+        ...(isKimi26 ? { chat_template_kwargs: { thinking: false } } : {}),
     };
 }
 
@@ -947,7 +961,7 @@ async function* nvidiaStream(request: ProviderRequest): AsyncIterable<string> {
 
 const nvidiaAdapter: ProviderAdapter = {
     id: 'nvidia',
-    model: env.AI_MODEL.trim(),
+    model: nvidiaModel(),
     async complete(request) {
         if (!env.NVIDIA_API_KEY?.trim()) return mockAdapter.complete(request);
         return nvidiaComplete(request);

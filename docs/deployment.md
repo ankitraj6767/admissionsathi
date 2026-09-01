@@ -45,7 +45,7 @@ Production minimum:
 | `STORAGE_PROVIDER` | `cloudinary` plus the three `CLOUDINARY_*` values. `local` throws on Vercel by design (ephemeral filesystem), and `s3` has no adapter |
 | `CRON_SECRET` | Fresh random string. Without it `/api/cron/notifications` returns 401 to every caller and no queued notification is ever delivered |
 
-Add as needed: `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`, `STORAGE_PROVIDER=cloudinary` plus the three Cloudinary values, `EMAIL_PROVIDER=resend` + `RESEND_API_KEY` + `EMAIL_FROM`, `WHATSAPP_PROVIDER=meta` + token + phone number id, `AI_PROVIDER=nvidia` + `AI_MODEL=meta/llama-3.1-8b-instruct` + a rotated `NVIDIA_API_KEY`, `UPSTASH_REDIS_REST_URL` / `_TOKEN`, `NEXT_PUBLIC_ANALYTICS_PROVIDERS` and the analytics IDs.
+Add as needed: `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET`, `STORAGE_PROVIDER=cloudinary` plus the three Cloudinary values, `EMAIL_PROVIDER=resend` + `RESEND_API_KEY` + `EMAIL_FROM`, `WHATSAPP_PROVIDER=meta` + token + phone number id, `AI_PROVIDER=nvidia` + `AI_MODEL=moonshotai/kimi-k2.6` + a rotated `NVIDIA_API_KEY`, `UPSTASH_REDIS_REST_URL` / `_TOKEN`, `NEXT_PUBLIC_ANALYTICS_PROVIDERS` and the analytics IDs.
 
 Notes:
 
