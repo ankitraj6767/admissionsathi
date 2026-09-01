@@ -990,6 +990,9 @@ function providerErrorDetails(error: unknown): Record<string, unknown> {
 
 function providerFailureNotice(error: unknown): string {
     const details = providerErrorDetails(error);
+    if (details.statusCode === 404) {
+        return 'The selected NVIDIA model is not available for this API account (HTTP 404). Enable that model/function in NVIDIA Build or choose an entitled model; I’m showing verified Admission Sathi source matches.';
+    }
     return typeof details.statusCode === 'number'
         ? `The live NVIDIA model was unavailable (HTTP ${details.statusCode}), so I’m showing verified Admission Sathi source matches.`
         : 'The live AI model was unavailable, so I’m showing verified Admission Sathi source matches.';
