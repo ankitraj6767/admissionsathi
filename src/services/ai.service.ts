@@ -817,16 +817,22 @@ function buildMessages({ systemPrompt, contextBlock, history, question }: Provid
 }
 
 function createNvidiaModel() {
+    // Accept both the documented base URL (/v1) and the full chat-completions
+    // URL users often copy from NVIDIA's examples.
+    const baseURL = env.NVIDIA_BASE_URL
+        .trim()
+        .replace(/\/chat\/completions\/?$/, '')
+        .replace(/\/$/, '');
     const nvidia = createOpenAICompatible({
         name: 'nvidia',
-        baseURL: env.NVIDIA_BASE_URL.replace(/\/$/, ''),
-        apiKey: env.NVIDIA_API_KEY,
+        baseURL,
+        apiKey: env.NVIDIA_API_KEY?.trim(),
     });
-    return nvidia(env.AI_MODEL);
+    return nvidia(env.AI_MODEL.trim());
 }
 
 function nvidiaGenerationOptions(request: ProviderRequest) {
-    const isKimi = env.AI_MODEL === 'moonshotai/kimi-k2.5';
+    const isKimi = env.AI_MODEL.trim() === 'moonshotai/kimi-k2.5';
     return {
         model: createNvidiaModel(),
         messages: buildMessages(request),
@@ -853,14 +859,14 @@ function nvidiaGenerationOptions(request: ProviderRequest) {
 
 const nvidiaAdapter: ProviderAdapter = {
     id: 'nvidia',
-    model: env.AI_MODEL,
+    model: env.AI_MODEL.trim(),
     async complete(request) {
-        if (!env.NVIDIA_API_KEY) return mockAdapter.complete(request);
+        if (!env.NVIDIA_API_KEY?.trim()) return mockAdapter.complete(request);
         const result = await generateText(nvidiaGenerationOptions(request));
         return result.text.trim() || NO_CONTEXT_REPLY;
     },
     async *stream(request) {
-        if (!env.NVIDIA_API_KEY) {
+        if (!env.NVIDIA_API_KEY?.trim()) {
             yield await mockAdapter.complete(request);
             return;
         }
@@ -868,9 +874,7 @@ const nvidiaAdapter: ProviderAdapter = {
         const result = streamText({
             ...nvidiaGenerationOptions(request),
             onError({ error }) {
-                logger.error('ai.nvidia_stream_failed', {
-                    error: error instanceof Error ? error.message : String(error),
-                });
+                logger.error('ai.nvidia_stream_failed', providerErrorDetails(error));
             },
         });
 
@@ -879,6 +883,18 @@ const nvidiaAdapter: ProviderAdapter = {
         }
     },
 };
+
+function providerErrorDetails(error: unknown): Record<string, unknown> {
+    if (!error || typeof error !== 'object') return { error: String(error) };
+    const value = error as { message?: unknown; statusCode?: unknown; responseBody?: unknown };
+    return {
+        error: typeof value.message === 'string' ? value.message : String(error),
+        ...(typeof value.statusCode === 'number' ? { statusCode: value.statusCode } : {}),
+        ...(typeof value.responseBody === 'string'
+            ? { responseBody: truncate(value.responseBody, 600) }
+            : {}),
+    };
+}
 
 const openaiAdapter: ProviderAdapter = {
     id: 'openai',
@@ -935,7 +951,7 @@ const anthropicAdapter: ProviderAdapter = {
 };
 
 function adapterFor(provider: string): ProviderAdapter {
-    if (provider === 'nvidia') return env.NVIDIA_API_KEY ? nvidiaAdapter : mockAdapter;
+    if (provider === 'nvidia') return env.NVIDIA_API_KEY?.trim() ? nvidiaAdapter : mockAdapter;
     if (provider === 'openai') return env.OPENAI_API_KEY ? openaiAdapter : mockAdapter;
     if (provider === 'anthropic') return env.ANTHROPIC_API_KEY ? anthropicAdapter : mockAdapter;
     return mockAdapter;
@@ -1090,7 +1106,7 @@ async function completePrepared(prepared: PreparedAssistant): Promise<string> {
     } catch (error) {
         logger.error('ai.provider_failed', {
             provider: prepared.adapter.id,
-            error: error instanceof Error ? error.message : String(error),
+            ...providerErrorDetails(error),
         });
         return mockAdapter.complete({
             ...request,
@@ -1162,7 +1178,7 @@ export async function streamAssistant(input: AskInput): Promise<AiAnswerStream> 
             } catch (error) {
                 logger.error('ai.provider_stream_failed', {
                     provider: prepared.adapter.id,
-                    error: error instanceof Error ? error.message : String(error),
+                    ...providerErrorDetails(error),
                 });
             }
 
