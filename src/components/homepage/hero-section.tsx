@@ -19,6 +19,22 @@ interface HeroSectionProps {
     showQuickActions: boolean;
 }
 
+const PHOTO_HERO_URL = '/brand/hero-students-photo.png';
+const LEGACY_HERO_URLS = new Set([
+    '/brand/hero-students.svg',
+    '/brand/hero-students-mobile.svg',
+]);
+
+/**
+ * Existing installations can still have the original seeded illustration URL
+ * in the homepage-builder config. Upgrade only those legacy defaults while
+ * continuing to respect any image an editor has explicitly configured.
+ */
+function resolveHeroImage<T extends { url: string } | null | undefined>(image: T): T {
+    if (!image || !LEGACY_HERO_URLS.has(image.url)) return image;
+    return { ...image, url: PHOTO_HERO_URL } as T;
+}
+
 /** Homepage hero: headline + trust stats, search card, hero image and lead form. */
 export function HeroSection({
     hero,
@@ -30,8 +46,8 @@ export function HeroSection({
 }: HeroSectionProps) {
     const config = hero.config;
     const form = config.form;
-    const image = config.heroImage;
-    const mobileImage = config.heroImageMobile ?? image;
+    const image = resolveHeroImage(config.heroImage);
+    const mobileImage = resolveHeroImage(config.heroImageMobile ?? image);
 
     return (
         <section aria-labelledby="hero-heading" className="relative overflow-hidden pb-6 pt-5 md:pt-7">
@@ -45,7 +61,7 @@ export function HeroSection({
             {image?.url ? (
                 <div
                     aria-hidden
-                    className="pointer-events-none absolute bottom-0 left-[34%] right-[22%] top-2 hidden lg:block xl:left-[36%]"
+                    className="pointer-events-none absolute bottom-0 left-[45%] right-[13%] top-2 hidden lg:block"
                 >
                     <div className="relative h-full w-full">
                         <Image
@@ -60,7 +76,7 @@ export function HeroSection({
                 </div>
             ) : null}
 
-            <div className="shell relative">
+            <div className="shell relative max-w-[1400px]">
                 <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,296px)] xl:grid-cols-[minmax(0,1fr)_minmax(0,300px)] 2xl:grid-cols-[minmax(0,1fr)_minmax(0,320px)]">
                     {/*
                         Headline + search share row 1, trust stats + quick actions share row 2,
@@ -122,7 +138,7 @@ export function HeroSection({
                         ) : null}
 
                         {/* ---------------- Search (row 1, col 2) ---------------- */}
-                        <div className="relative z-10 flex flex-col lg:col-start-2 lg:row-start-1">
+                        <div className="relative z-10 flex flex-col lg:col-start-2 lg:row-start-1 lg:max-w-[360px]">
                             <div className="flex h-full flex-col rounded-panel border border-line bg-white p-4 shadow-raised md:p-5">
                                 <h2 className="mb-3 text-center text-[14.5px] font-bold text-navy-800">
                                     {config.searchTitle ?? 'What do you want to study?'}
@@ -157,7 +173,7 @@ export function HeroSection({
                                         alt={mobileImage.alt ?? 'Students on a college campus'}
                                         fill
                                         priority
-                                        sizes="100vw"
+                                        sizes="210px"
                                         className="object-contain object-bottom"
                                     />
                                 </div>

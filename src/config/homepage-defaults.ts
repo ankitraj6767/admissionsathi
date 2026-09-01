@@ -50,11 +50,11 @@ export const HOMEPAGE_SECTION_DRAFTS: HomepageSectionDraft[] = [
                 { label: 'Nursing', url: '/courses/b-sc-nursing' },
             ],
             heroImage: {
-                url: '/brand/hero-students.svg',
+                url: '/brand/hero-students-photo.png',
                 alt: 'Three students holding books and smiling on a college campus',
             },
             heroImageMobile: {
-                url: '/brand/hero-students-mobile.svg',
+                url: '/brand/hero-students-photo.png',
                 alt: 'Students smiling on a college campus',
             },
             form: {
