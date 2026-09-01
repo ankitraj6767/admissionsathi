@@ -1,7 +1,5 @@
 import 'server-only';
 import { randomUUID } from 'node:crypto';
-import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
-import { generateText, streamText } from 'ai';
 import {
     searchArticlePassages,
     searchFaqPassages,
@@ -816,45 +814,135 @@ function buildMessages({ systemPrompt, contextBlock, history, question }: Provid
     ];
 }
 
-function createNvidiaModel() {
-    // Accept both the documented base URL (/v1) and the full chat-completions
-    // URL users often copy from NVIDIA's examples.
-    const baseURL = env.NVIDIA_BASE_URL
-        .trim()
-        .replace(/\/chat\/completions\/?$/, '')
-        .replace(/\/$/, '');
-    const nvidia = createOpenAICompatible({
-        name: 'nvidia',
-        baseURL,
-        apiKey: env.NVIDIA_API_KEY?.trim(),
-    });
-    return nvidia(env.AI_MODEL.trim());
+class NvidiaApiError extends Error {
+    readonly statusCode: number;
+    readonly responseBody: string;
+
+    constructor(statusCode: number, responseBody: string) {
+        super(`NVIDIA API responded ${statusCode}`);
+        this.name = 'NvidiaApiError';
+        this.statusCode = statusCode;
+        this.responseBody = responseBody;
+    }
 }
 
-function nvidiaGenerationOptions(request: ProviderRequest) {
+function nvidiaEndpoint(): string {
+    // Accept both NVIDIA's documented base URL and the full URL copied from
+    // their examples, avoiding /chat/completions/chat/completions.
+    return `${env.NVIDIA_BASE_URL
+        .trim()
+        .replace(/\/chat\/completions\/?$/, '')
+        .replace(/\/$/, '')}/chat/completions`;
+}
+
+function nvidiaRequestBody(request: ProviderRequest, stream: boolean) {
     const isKimi = env.AI_MODEL.trim() === 'moonshotai/kimi-k2.5';
     return {
-        model: createNvidiaModel(),
+        model: env.AI_MODEL.trim(),
         messages: buildMessages(request),
-        maxOutputTokens: 450,
+        max_tokens: 450,
         temperature: isKimi ? 0.6 : 0.2,
-        maxRetries: 1,
-        abortSignal: request.abortSignal,
-        timeout: {
-            totalMs: 60_000,
-            firstChunkMs: 25_000,
-            chunkMs: 15_000,
-        },
-        providerOptions: isKimi
-            ? {
-                nvidia: {
-                    // NVIDIA's Kimi endpoint calls this Instant Mode. It avoids
-                    // spending the response budget on a hidden reasoning trace.
-                    thinking: { type: 'disabled' },
-                },
-            }
-            : undefined,
+        stream,
+        ...(isKimi ? { thinking: { type: 'disabled' } } : {}),
     };
+}
+
+function nvidiaSignal(request: ProviderRequest): AbortSignal {
+    const timeout = AbortSignal.timeout(60_000);
+    return request.abortSignal ? AbortSignal.any([request.abortSignal, timeout]) : timeout;
+}
+
+async function nvidiaRequest(request: ProviderRequest, stream: boolean): Promise<Response> {
+    const response = await fetch(nvidiaEndpoint(), {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${env.NVIDIA_API_KEY!.trim()}`,
+            'Content-Type': 'application/json',
+            Accept: stream ? 'text/event-stream' : 'application/json',
+        },
+        body: JSON.stringify(nvidiaRequestBody(request, stream)),
+        signal: nvidiaSignal(request),
+        cache: 'no-store',
+    });
+
+    if (!response.ok) throw new NvidiaApiError(response.status, truncate(await response.text(), 1_000));
+    return response;
+}
+
+function nvidiaContent(value: unknown): string {
+    if (typeof value === 'string') return value;
+    if (!Array.isArray(value)) return '';
+    return value
+        .map((part) => {
+            if (!part || typeof part !== 'object') return '';
+            const text = (part as { text?: unknown }).text;
+            return typeof text === 'string' ? text : '';
+        })
+        .join('');
+}
+
+function nvidiaResponseText(payload: unknown): string {
+    if (!payload || typeof payload !== 'object') return '';
+    const choice = (payload as { choices?: Array<{ message?: { content?: unknown } }> }).choices?.[0];
+    return nvidiaContent(choice?.message?.content);
+}
+
+async function nvidiaComplete(request: ProviderRequest): Promise<string> {
+    const response = await nvidiaRequest(request, false);
+    const payload = (await response.json()) as unknown;
+    const text = nvidiaResponseText(payload).trim();
+    if (!text) throw new NvidiaApiError(502, 'NVIDIA returned a response without message content.');
+    return text;
+}
+
+function parseNvidiaEvent(event: string): { text?: string; done?: boolean; error?: string } {
+    const data = event
+        .split(/\r?\n/)
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).trim())
+        .join('');
+    if (!data || data === '[DONE]') return { done: true };
+    let payload: unknown;
+    try {
+        payload = JSON.parse(data);
+    } catch {
+        return { error: 'NVIDIA returned malformed streaming data.' };
+    }
+    if (payload && typeof payload === 'object' && 'error' in payload) {
+        return { error: truncate(JSON.stringify((payload as { error: unknown }).error), 600) };
+    }
+    const choice = (payload as { choices?: Array<{ delta?: { content?: unknown } }> }).choices?.[0];
+    return { text: nvidiaContent(choice?.delta?.content) };
+}
+
+async function* nvidiaStream(request: ProviderRequest): AsyncIterable<string> {
+    const response = await nvidiaRequest(request, true);
+    if (!response.body) throw new NvidiaApiError(502, 'NVIDIA returned an empty stream.');
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let emitted = false;
+
+    const consume = async function* (event: string): AsyncIterable<string> {
+        const parsed = parseNvidiaEvent(event);
+        if (parsed.error) throw new NvidiaApiError(502, parsed.error);
+        if (parsed.text) {
+            emitted = true;
+            yield parsed.text;
+        }
+    };
+
+    while (true) {
+        const { done, value } = await reader.read();
+        buffer += decoder.decode(value ?? new Uint8Array(), { stream: !done });
+        const events = buffer.split(/\r?\n\r?\n/);
+        buffer = events.pop() ?? '';
+        for (const event of events) yield* consume(event);
+        if (done) break;
+    }
+    if (buffer.trim()) yield* consume(buffer);
+    if (!emitted) throw new NvidiaApiError(502, 'NVIDIA returned no text content.');
 }
 
 const nvidiaAdapter: ProviderAdapter = {
@@ -862,8 +950,7 @@ const nvidiaAdapter: ProviderAdapter = {
     model: env.AI_MODEL.trim(),
     async complete(request) {
         if (!env.NVIDIA_API_KEY?.trim()) return mockAdapter.complete(request);
-        const result = await generateText(nvidiaGenerationOptions(request));
-        return result.text.trim() || NO_CONTEXT_REPLY;
+        return nvidiaComplete(request);
     },
     async *stream(request) {
         if (!env.NVIDIA_API_KEY?.trim()) {
@@ -871,16 +958,7 @@ const nvidiaAdapter: ProviderAdapter = {
             return;
         }
 
-        const result = streamText({
-            ...nvidiaGenerationOptions(request),
-            onError({ error }) {
-                logger.error('ai.nvidia_stream_failed', providerErrorDetails(error));
-            },
-        });
-
-        for await (const textPart of result.textStream) {
-            if (textPart) yield textPart;
-        }
+        yield* nvidiaStream(request);
     },
 };
 
