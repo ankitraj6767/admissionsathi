@@ -6,7 +6,7 @@ Server variables are validated in [`src/lib/env.ts`](../src/lib/env.ts) with Zod
 
 ## Rules
 
-- **`MONGODB_URI` and every secret must never be prefixed with `NEXT_PUBLIC_`.** Anything with that prefix is inlined into the JavaScript sent to every visitor and is therefore public forever. This applies to `MONGODB_URI`, `AUTH_SECRET`, `AUTH_GOOGLE_SECRET`, `CLOUDINARY_API_SECRET`, `S3_SECRET_ACCESS_KEY`, `RESEND_API_KEY`, `SMTP_PASSWORD`, `WHATSAPP_API_TOKEN`, `SMS_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `UPSTASH_REDIS_REST_TOKEN`, `CRON_SECRET` and `SENTRY_DSN`.
+- **`MONGODB_URI` and every secret must never be prefixed with `NEXT_PUBLIC_`.** Anything with that prefix is inlined into the JavaScript sent to every visitor and is therefore public forever. This applies to `MONGODB_URI`, `AUTH_SECRET`, `AUTH_GOOGLE_SECRET`, `CLOUDINARY_API_SECRET`, `S3_SECRET_ACCESS_KEY`, `RESEND_API_KEY`, `SMTP_PASSWORD`, `WHATSAPP_API_TOKEN`, `SMS_API_KEY`, `NVIDIA_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `UPSTASH_REDIS_REST_TOKEN`, `CRON_SECRET` and `SENTRY_DSN`.
 - `NEXT_PUBLIC_*` variables are read directly from `process.env` in client code and are **not** part of the Zod schema. Keep them to non-sensitive identifiers (site URL, analytics measurement IDs).
 - Provider enums are validated. An unlisted value fails validation rather than silently disabling a feature.
 - Defaults are chosen so that a bare `.env.local` with `MONGODB_URI` + `AUTH_SECRET` runs a fully functional local app that sends nothing to the outside world.
@@ -163,8 +163,10 @@ step.
 
 | Variable | Required | Scope | Purpose | Example |
 | --- | --- | --- | --- | --- |
-| `AI_PROVIDER` | No (default `mock`) | server | `mock` \| `openai` \| `anthropic` \| `bedrock`. `mock` is an extractive retrieval answerer that never invents facts. `bedrock` has no adapter and falls back to `mock` | `openai` |
-| `AI_MODEL` | No (default `gpt-4o-mini`) | server | Model id passed to the selected provider | `gpt-4o-mini` |
+| `AI_PROVIDER` | No (default `mock`) | server | `mock` \| `nvidia` \| `openai` \| `anthropic` \| `bedrock`. `mock` is an extractive retrieval answerer that never invents facts. `bedrock` has no adapter and falls back to `mock` | `nvidia` |
+| `AI_MODEL` | No (default `gpt-4o-mini`) | server | Model id passed to the selected provider | `moonshotai/kimi-k2.5` |
+| `NVIDIA_API_KEY` | Only for `nvidia` | server | NVIDIA NIM bearer token. Missing key safely falls back to the `mock` adapter | `nvapi-…` |
+| `NVIDIA_BASE_URL` | No | server | OpenAI-compatible NIM API base URL | `https://integrate.api.nvidia.com/v1` |
 | `OPENAI_API_KEY` | Only for `openai` | server | Missing key silently falls back to the `mock` adapter | `sk-…` |
 | `ANTHROPIC_API_KEY` | Only for `anthropic` | server | Missing key silently falls back to the `mock` adapter | `sk-ant-…` |
 

@@ -214,6 +214,28 @@ export async function getNewsBySlug(slug: string): Promise<NewsPostDoc | null> {
     return findOneLean<NewsPostDoc>(NewsPost, { slug, status: 'published' });
 }
 
+/** Published news snippets matching the assistant's retrieval keywords. */
+export async function searchNewsPassages(
+    keywords: string[],
+    limit = 3,
+): Promise<Pick<NewsPostDoc, 'title' | 'slug' | 'summary' | 'contentHtml' | 'category' | 'publishDate'>[]> {
+    if (keywords.length === 0) return [];
+    const rx = new RegExp(keywords.map(escapeRegex).join('|'), 'i');
+    return findLean<NewsPostDoc>(
+        NewsPost,
+        {
+            status: 'published',
+            isDeleted: false,
+            $or: [{ title: rx }, { summary: rx }, { contentHtml: rx }],
+        },
+        {
+            sort: { publishDate: -1 },
+            limit,
+            projection: { title: 1, slug: 1, summary: 1, contentHtml: 1, category: 1, publishDate: 1 },
+        },
+    );
+}
+
 /** Indexable news slugs for the sitemap, most recently updated first. */
 export async function listNewsSitemapSlugs(limit: number): Promise<SlugRow[]> {
     return listSlugRows<NewsPostDoc>(NewsPost, SITEMAP_FILTER as FilterQuery<NewsPostDoc>, { limit });
@@ -248,6 +270,53 @@ export async function listResources(filters: {
 
 export async function getResourceBySlug(slug: string): Promise<ResourceDoc | null> {
     return findOneLean<ResourceDoc>(Resource, { slug, status: 'published' });
+}
+
+/** Published guides, papers and preparation resources matching AI retrieval keywords. */
+export async function searchResourcePassages(
+    keywords: string[],
+    limit = 3,
+): Promise<
+    Pick<
+        ResourceDoc,
+        | 'title'
+        | 'slug'
+        | 'type'
+        | 'description'
+        | 'contentHtml'
+        | 'relatedExamName'
+        | 'year'
+        | 'subject'
+        | 'isFree'
+        | 'price'
+    >[]
+> {
+    if (keywords.length === 0) return [];
+    const rx = new RegExp(keywords.map(escapeRegex).join('|'), 'i');
+    return findLean<ResourceDoc>(
+        Resource,
+        {
+            status: 'published',
+            isDeleted: false,
+            $or: [{ title: rx }, { description: rx }, { contentHtml: rx }, { relatedExamName: rx }, { subject: rx }],
+        },
+        {
+            sort: { isFeatured: -1, publishedAt: -1 },
+            limit,
+            projection: {
+                title: 1,
+                slug: 1,
+                type: 1,
+                description: 1,
+                contentHtml: 1,
+                relatedExamName: 1,
+                year: 1,
+                subject: 1,
+                isFree: 1,
+                price: 1,
+            },
+        },
+    );
 }
 
 export async function listResourcesForExam(

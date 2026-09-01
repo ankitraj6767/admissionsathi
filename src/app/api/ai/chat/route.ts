@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { getCurrentActor } from '@/lib/auth/session';
 import { RATE_LIMITS, rateLimit } from '@/lib/rate-limit';
 import { logger } from '@/lib/logger';
-import { askAssistant, saveConversationTurn } from '@/services/ai.service';
+import { saveConversationTurn, streamAssistant } from '@/services/ai.service';
 import { recordAnalyticsEvent } from '@/services/analytics.service';
 
 export const runtime = 'nodejs';
@@ -53,15 +53,16 @@ export async function POST(request: NextRequest) {
         );
     }
 
-    let result: Awaited<ReturnType<typeof askAssistant>>;
+    let result: Awaited<ReturnType<typeof streamAssistant>>;
     try {
-        result = await askAssistant({
+        result = await streamAssistant({
             question: payload.question,
             history: payload.history,
             sessionId: payload.sessionId,
             userId: actor?.id,
             anonymousId: payload.anonymousId,
             consentGiven: payload.consent ?? false,
+            abortSignal: request.signal,
         });
     } catch (error) {
         logger.error('ai.chat_failed', {
@@ -73,33 +74,7 @@ export async function POST(request: NextRequest) {
         );
     }
 
-    void saveConversationTurn({
-        sessionId: result.sessionId,
-        userId: actor?.id,
-        anonymousId: payload.anonymousId,
-        consentGiven: payload.consent ?? false,
-        question: payload.question,
-        answer: result.answer,
-        sources: result.sources,
-        provider: result.provider,
-        model: result.model,
-    });
-
-    void recordAnalyticsEvent({
-        name: 'ai_question_asked',
-        path: '/ai-assistant',
-        userId: actor?.id,
-        anonymousId: payload.anonymousId,
-        sessionId: result.sessionId,
-        properties: {
-            provider: result.provider,
-            grounded: result.grounded,
-            sourceCount: result.sources.length,
-        },
-    });
-
     const encoder = new TextEncoder();
-    const words = result.answer.split(/(\s+)/);
 
     const stream = new ReadableStream<Uint8Array>({
         async start(controller) {
@@ -113,16 +88,50 @@ export async function POST(request: NextRequest) {
                 grounded: result.grounded,
             });
 
-            // Chunked in small batches so the client renders progressively without
-            // one event per character.
-            for (let i = 0; i < words.length; i += 4) {
-                send('delta', { text: words.slice(i, i + 4).join('') });
-                if (i % 40 === 0) await new Promise((resolve) => setTimeout(resolve, 12));
-            }
+            let answer = '';
+            try {
+                for await (const text of result.textStream) {
+                    answer += text;
+                    send('delta', { text });
+                }
 
-            send('sources', { sources: result.sources });
-            send('done', { sessionId: result.sessionId });
-            controller.close();
+                send('sources', { sources: result.sources });
+                send('done', { sessionId: result.sessionId });
+            } catch (error) {
+                logger.error('ai.response_stream_failed', {
+                    provider: result.provider,
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            } finally {
+                if (answer.trim() && !request.signal.aborted) {
+                    void saveConversationTurn({
+                        sessionId: result.sessionId,
+                        userId: actor?.id,
+                        anonymousId: payload.anonymousId,
+                        consentGiven: payload.consent ?? false,
+                        question: payload.question,
+                        answer,
+                        sources: result.sources,
+                        provider: result.provider,
+                        model: result.model,
+                    });
+
+                    void recordAnalyticsEvent({
+                        name: 'ai_question_asked',
+                        path: '/ai-assistant',
+                        userId: actor?.id,
+                        anonymousId: payload.anonymousId,
+                        sessionId: result.sessionId,
+                        properties: {
+                            provider: result.provider,
+                            grounded: result.grounded,
+                            sourceCount: result.sources.length,
+                        },
+                    });
+                }
+
+                controller.close();
+            }
         },
     });
 

@@ -43,8 +43,10 @@ const serverSchema = z.object({
     SMS_API_KEY: z.string().optional(),
     SMS_SENDER_ID: z.string().optional(),
 
-    AI_PROVIDER: z.enum(['mock', 'openai', 'anthropic', 'bedrock']).default('mock'),
+    AI_PROVIDER: z.enum(['mock', 'nvidia', 'openai', 'anthropic', 'bedrock']).default('mock'),
     AI_MODEL: z.string().default('gpt-4o-mini'),
+    NVIDIA_API_KEY: z.string().optional(),
+    NVIDIA_BASE_URL: z.string().url().default('https://integrate.api.nvidia.com/v1'),
     OPENAI_API_KEY: z.string().optional(),
     ANTHROPIC_API_KEY: z.string().optional(),
 

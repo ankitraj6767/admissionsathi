@@ -67,12 +67,22 @@ export default async function AdminIntegrationsPage() {
         {
             name: 'AI assistant',
             provider: env.AI_PROVIDER,
-            configured: env.AI_PROVIDER !== 'mock',
+            configured:
+                (env.AI_PROVIDER === 'nvidia' && Boolean(env.NVIDIA_API_KEY)) ||
+                (env.AI_PROVIDER === 'openai' && Boolean(env.OPENAI_API_KEY)) ||
+                (env.AI_PROVIDER === 'anthropic' && Boolean(env.ANTHROPIC_API_KEY)),
             note:
                 env.AI_PROVIDER === 'mock'
                     ? 'The assistant answers from platform content only, with no external model call.'
-                    : `Model: ${env.AI_MODEL}`,
-            envKeys: ['AI_PROVIDER', 'AI_MODEL', 'OPENAI_API_KEY', 'ANTHROPIC_API_KEY'],
+                    : `Model: ${env.AI_MODEL}. Missing credentials safely fall back to extractive platform answers.`,
+            envKeys: [
+                'AI_PROVIDER',
+                'AI_MODEL',
+                'NVIDIA_API_KEY',
+                'NVIDIA_BASE_URL',
+                'OPENAI_API_KEY',
+                'ANTHROPIC_API_KEY',
+            ],
         },
         {
             name: 'Analytics',
