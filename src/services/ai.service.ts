@@ -6,11 +6,12 @@ import {
     searchNewsPassages,
     searchResourcePassages,
 } from '@/db/repositories/content.repository';
-import { getCollegeBySlug } from '@/db/repositories/college.repository';
-import { getCourseBySlug } from '@/db/repositories/course.repository';
-import { getExamBySlug } from '@/db/repositories/exam.repository';
+import { getCollegeBySlug, listFeaturedColleges } from '@/db/repositories/college.repository';
+import { getCourseBySlug, listFeaturedCourses } from '@/db/repositories/course.repository';
+import { getExamBySlug, listFeaturedExams } from '@/db/repositories/exam.repository';
 import {
     getScholarshipBySlug,
+    listFeaturedScholarshipRows,
     listProductsForProvider,
     listPublishedLoanProviders,
 } from '@/db/repositories/finance.repository';
@@ -582,6 +583,55 @@ async function retrievePredictors(question: string, limit = 3): Promise<Retrieve
     }
 }
 
+function broadQuestionCategory(question: string): 'college' | 'course' | 'exam' | 'scholarship' | 'predictor' | null {
+    const normalized = question.toLowerCase();
+    if (/\b(college|colleges|university|universit(?:y|ies)|institute|institutes)\b/.test(normalized)) return 'college';
+    if (/\b(course|courses|degree|degrees|career)\b/.test(normalized)) return 'course';
+    if (/\b(exam|exams|entrance|test)\b/.test(normalized)) return 'exam';
+    if (/\b(scholarship|scholarships|grant|financial aid)\b/.test(normalized)) return 'scholarship';
+    if (/\b(predictor|percentile|rank|score|chance)\b/.test(normalized)) return 'predictor';
+    return null;
+}
+
+/** Broad questions such as "best college" still need grounded platform data. */
+async function retrieveBroadMatches(question: string): Promise<RetrievedPassage[]> {
+    const category = broadQuestionCategory(question);
+    try {
+        if (category === 'college') {
+            const rows = await listFeaturedColleges(6);
+            return Promise.all(rows.map((row) => enrichHit({
+                type: 'college', id: String(row._id), label: row.name, sublabel: `${row.cityName}, ${row.stateName}`,
+                url: `/colleges/${row.slug}`,
+            }).then((passage) => ({ ...passage, kind: 'college' as const }))));
+        }
+        if (category === 'course') {
+            const rows = await listFeaturedCourses(6);
+            return Promise.all(rows.map((row) => enrichHit({
+                type: 'course', id: String(row._id), label: row.name, sublabel: row.level,
+                url: `/courses/${row.slug}`,
+            }).then((passage) => ({ ...passage, kind: 'course' as const }))));
+        }
+        if (category === 'exam') {
+            const rows = await listFeaturedExams(6);
+            return Promise.all(rows.map((row) => enrichHit({
+                type: 'exam', id: String(row._id), label: `${row.shortName} — ${row.name}`,
+                url: `/exams/${row.slug}`,
+            }).then((passage) => ({ ...passage, kind: 'exam' as const }))));
+        }
+        if (category === 'scholarship') {
+            const rows = await listFeaturedScholarshipRows(6);
+            return Promise.all(rows.map((row) => enrichHit({
+                type: 'scholarship', id: String(row._id), label: row.name,
+                url: `/scholarships/${row.slug}`,
+            }).then((passage) => ({ ...passage, kind: 'scholarship' as const }))));
+        }
+        if (category === 'predictor') return retrievePredictors(question, 6);
+    } catch {
+        return [];
+    }
+    return [];
+}
+
 function scoreToken(value: string): string {
     if (value.endsWith('ies') && value.length > 4) return `${value.slice(0, -3)}y`;
     if (value.endsWith('s') && value.length > 4) return value.slice(0, -1);
@@ -641,6 +691,7 @@ export async function retrieveContext(question: string, conversationContext?: st
     const retrievalQuestion = [question, conversationContext].filter(Boolean).join(' ');
     const keywords = extractKeywords(retrievalQuestion, 8);
     const searchTerms = keywords.slice(0, 3);
+    const broadMatches = keywords.length === 0 ? await retrieveBroadMatches(question) : [];
 
     const [searches, faqs, articles, news, resources, loans, predictors] = await Promise.all([
         Promise.all(
@@ -694,6 +745,7 @@ export async function retrieveContext(question: string, conversationContext?: st
     const loanPassages = loans.map((passage) => ({ ...passage, kind: 'loan' as const }));
 
     const all = [
+        ...broadMatches,
         ...entityPassages,
         ...predictors,
         ...faqs,
