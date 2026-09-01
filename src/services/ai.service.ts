@@ -974,6 +974,13 @@ function providerErrorDetails(error: unknown): Record<string, unknown> {
     };
 }
 
+function providerFailureNotice(error: unknown): string {
+    const details = providerErrorDetails(error);
+    return typeof details.statusCode === 'number'
+        ? `The live NVIDIA model was unavailable (HTTP ${details.statusCode}), so I’m showing verified Admission Sathi source matches.`
+        : 'The live AI model was unavailable, so I’m showing verified Admission Sathi source matches.';
+}
+
 const openaiAdapter: ProviderAdapter = {
     id: 'openai',
     model: env.AI_MODEL,
@@ -1186,10 +1193,7 @@ async function completePrepared(prepared: PreparedAssistant): Promise<string> {
             provider: prepared.adapter.id,
             ...providerErrorDetails(error),
         });
-        return mockAdapter.complete({
-            ...request,
-            fallbackNotice: 'The live AI model was unavailable, so I’m showing verified Admission Sathi source matches.',
-        });
+        return mockAdapter.complete({ ...request, fallbackNotice: providerFailureNotice(error) });
     }
 }
 
@@ -1247,6 +1251,7 @@ export async function streamAssistant(input: AskInput): Promise<AiAnswerStream> 
         const providerStream = prepared.adapter.stream(request);
         textStream = (async function* guardedProviderStream() {
             let emitted = false;
+            let providerError: unknown;
             try {
                 for await (const chunk of providerStream) {
                     if (!chunk) continue;
@@ -1254,6 +1259,7 @@ export async function streamAssistant(input: AskInput): Promise<AiAnswerStream> 
                     yield chunk;
                 }
             } catch (error) {
+                providerError = error;
                 logger.error('ai.provider_stream_failed', {
                     provider: prepared.adapter.id,
                     ...providerErrorDetails(error),
@@ -1263,7 +1269,7 @@ export async function streamAssistant(input: AskInput): Promise<AiAnswerStream> 
             if (!emitted) {
                 yield await mockAdapter.complete({
                     ...request,
-                    fallbackNotice: 'The live AI model was unavailable, so I’m showing verified Admission Sathi source matches.',
+                    fallbackNotice: providerFailureNotice(providerError),
                 });
             }
         })();
