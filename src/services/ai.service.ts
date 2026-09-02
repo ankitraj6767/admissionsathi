@@ -476,6 +476,7 @@ async function enrichHit(hit: SearchHit): Promise<RetrievedPassage> {
                     valueFact('Ownership', college.ownership),
                     valueFact('Established', college.establishedYear),
                     valueFact('Affiliated to', college.affiliatedTo),
+                    listFact('Categories', college.categories),
                     listFact('Approvals', college.approvals),
                     listFact('Accreditations', college.accreditation),
                     listFact('Study modes', college.studyModes),
@@ -707,14 +708,23 @@ async function retrieveBroadMatches(question: string): Promise<RetrievedPassage[
     const category = broadQuestionCategory(question);
     try {
         if (category === 'college') {
-            const featured = await listFeaturedColleges(6);
+            const featured = await listFeaturedColleges(18);
             const rows = featured.length > 0
                 ? featured
-                : (await listColleges({ page: 1, pageSize: 6, sort: 'relevance' })).items;
-            return Promise.all(rows.map((row) => enrichHit({
+                : (await listColleges({ page: 1, pageSize: 24, sort: 'relevance' })).items;
+            const passages = await Promise.all(rows.map((row) => enrichHit({
                 type: 'college', id: String(row._id), label: row.name, sublabel: `${row.cityName}, ${row.stateName}`,
                 url: `/colleges/${row.slug}`,
             }).then((passage) => ({ ...passage, kind: 'college' as const }))));
+            const normalized = question.toLowerCase();
+            const isEngineering = /\bb\s*\.?\s*tech\b|\bbtec\b|\bjee\b|\bengineering\b|\bb\.\s*e\b/.test(normalized);
+            const isMedical = /\bneet\b|\bmbbs\b|\bmedical\b|\bdental\b|\bnursing\b|\bpharmacy\b/.test(normalized);
+            if (!isEngineering && !isMedical) return passages.slice(0, 6);
+            const signal = isEngineering
+                ? /engineering|technology|b\.??tech|btech|computer science|jee/i
+                : /medical|mbbs|neet|dental|nursing|pharmacy|health/i;
+            const matched = passages.filter((passage) => signal.test(`${passage.label} ${passage.text}`));
+            return (matched.length > 0 ? matched : passages).slice(0, 6);
         }
         if (category === 'course') {
             const rows = await listFeaturedCourses(6);
