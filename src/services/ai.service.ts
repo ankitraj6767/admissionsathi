@@ -246,11 +246,24 @@ const DOMAIN_SEARCH_TERMS = [
     'counselling', 'predictor', 'career', 'deadline', 'registration',
 ];
 
+/** Common student shorthand should search the same entities as their formal names. */
+const QUERY_ALIASES: Array<[RegExp, string[]]> = [
+    [/\bb\s*\.?\s*tech\b|\bbtec\b|\bb\.\s*e\b/i, ['b.tech', 'btech', 'bachelor technology', 'engineering']],
+    [/\bneet\b/i, ['neet', 'neet ug', 'medical', 'mbbs']],
+    [/\bjee\b/i, ['jee', 'jee main', 'engineering']],
+    [/\bmbbs\b|\bmedical\b/i, ['mbbs', 'medical', 'neet ug']],
+    [/\bmba\b/i, ['mba', 'management']],
+    [/\bbca\b/i, ['bca', 'computer applications', 'it']],
+];
+
 function retrievalKeywords(question: string): string[] {
     const normalized = question.toLowerCase();
     const extracted = extractKeywords(question, 8);
     const topicTerms = DOMAIN_SEARCH_TERMS.filter((term) => normalized.includes(term));
-    return Array.from(new Set([...extracted, ...topicTerms])).slice(0, 8);
+    const aliases = QUERY_ALIASES
+        .filter(([pattern]) => pattern.test(question))
+        .flatMap(([, terms]) => terms);
+    return Array.from(new Set([...extracted, ...aliases, ...topicTerms])).slice(0, 12);
 }
 
 /**
@@ -798,7 +811,10 @@ export async function retrieveContext(question: string, conversationContext?: st
     const keywords = retrievalKeywords(retrievalQuestion);
     const searchTerms = keywords.slice(0, 5);
     const normalizedQuestion = question.toLowerCase();
-    const asksForRecommendation = /\b(best|top|recommend|recommendation|suggest|which should|where should)\b/.test(normalizedQuestion);
+    const asksForRecommendation =
+        /\b(best|top|recommend|recommendation|suggest|which|where)\b/.test(normalizedQuestion) ||
+        /\bshould\s+i\s+(choose|take|select|join|apply)\b/.test(normalizedQuestion) ||
+        /\b(in|for)\s+which\s+(college|course|university|institute)\b/.test(normalizedQuestion);
     const broadMatches =
         broadQuestionCategory(question) !== null && (extractedKeywords.length === 0 || asksForRecommendation)
             ? await retrieveBroadMatches(question)
@@ -962,9 +978,103 @@ interface ProviderAdapter {
 }
 
 const NO_CONTEXT_REPLY =
-    'I could not find anything on Admission Sathi that answers this reliably, so I would rather not guess. ' +
-    'A counsellor can answer it properly — you can [book a free session](/book-counselling) or ' +
-    '[browse our guides](/articles).';
+    'I can help you work this out. I do not have a matching Admission Sathi page for this exact question right now, ' +
+    'so I will keep the guidance practical and avoid inventing website-specific figures. ' +
+    'Share your exam/rank or percentile, preferred state, budget and course or branch, and I can narrow it to a shortlist. ' +
+    'You can also [book a free counselling session](/book-counselling) for a personalised recommendation.';
+
+function genericGuidanceAnswer(question: string): string {
+    const normalized = question.toLowerCase();
+    const isBTech = /\bb\s*\.?\s*tech\b|\bbtec\b|\bb\.\s*e\b/.test(normalized);
+    const isNeet = /\bneet\b|\bmbbs\b|\bmedical\b/.test(normalized);
+    const isRecommendation = /\b(best|top|recommend|which|where|should i|choose|select)\b/.test(normalized);
+
+    if (/\b(depress|depressed|stressed|anxious|overwhelmed|confused)\b/.test(normalized)) {
+        return 'I’m sorry this feels overwhelming. You do not have to choose a college in one step. Start by listing your preferred branch, ' +
+            'budget and location, then compare recognition, teaching, placements, total cost and student support. ' +
+            'If you share your exam, rank/percentile and state, I’ll help you build a realistic shortlist. ' +
+            'For immediate emotional support in India, Tele-MANAS is available at **14416**.';
+    }
+    if (isRecommendation && isBTech) {
+        return 'For B.Tech, there is no single best college for every student. Shortlist colleges by your branch, accreditation, ' +
+            'recent placement outcomes, total fees, location and the admission route you qualify for. ' +
+            'Send your exam and percentile/rank, category, preferred branch, state and budget and I’ll compare suitable options. ' +
+            'Verify current cut-offs and fees on the official counselling portal.';
+    }
+    if (isRecommendation && isNeet) {
+        return 'For NEET, choose a college by recognition, hospital and clinical exposure, counselling category, total fees, ' +
+            'location and recent outcomes—not by one headline ranking. Share your NEET rank/score, category, state preference and budget ' +
+            'and I’ll help you create a practical shortlist. Confirm current seat matrices and cut-offs through the official counselling authority.';
+    }
+    if (isRecommendation) {
+        return 'The right choice depends on your goal, eligibility, budget and location. Compare recognised programmes, curriculum, ' +
+            'placements or clinical exposure, total cost and the current counselling rules. Share the course, exam score/rank, ' +
+            'category, preferred state and budget for a precise recommendation.';
+    }
+    return NO_CONTEXT_REPLY;
+}
+
+function contextField(block: string, label: string): string | null {
+    const match = block.match(new RegExp(`^${label}:\\s*(.+)$`, 'im'));
+    return match?.[1]?.trim() || null;
+}
+
+function contextUrl(block: string): string | null {
+    return block.match(/^URL:\s*(\S+)$/im)?.[1] ?? null;
+}
+
+/** Turns retrieved records into a useful answer when the hosted model is down. */
+function groundedFallbackAnswer(question: string, contextBlock: string): string | null {
+    const blocks = contextBlock.split(/\n\n+/).filter(Boolean);
+    const normalized = question.toLowerCase();
+    const wantsRecommendation = /\b(best|top|recommend|which|where|should i|choose|select)\b/.test(normalized);
+    const wantsEligibility = /\b(eligib|criteria|requirement|qualification)\b/.test(normalized);
+    const wantsFees = /\b(fee|fees|cost|tuition|expense)\b/.test(normalized);
+
+    const relevant = blocks.filter((block) => {
+        const url = contextUrl(block) ?? '';
+        return url.startsWith('/colleges/') || url.startsWith('/courses/') || url.startsWith('/exams/') || url.startsWith('/scholarships/');
+    });
+    if (relevant.length === 0) return null;
+
+    if (wantsEligibility || wantsFees) {
+        const block = relevant.find((candidate) =>
+            (wantsEligibility && /^Eligibility:/im.test(candidate)) || (wantsFees && /^Published fee range:|^Average fee:/im.test(candidate)),
+        ) ?? relevant[0];
+        const label = (block.split('\n')[0] ?? '').replace(/^\[\d+\]\s*/, '').trim();
+        const url = contextUrl(block);
+        const facts = [
+            wantsEligibility ? contextField(block, 'Eligibility') : null,
+            wantsFees ? contextField(block, 'Published fee range') ?? contextField(block, 'Average fee') : null,
+            contextField(block, 'Duration'),
+            contextField(block, 'Entrance exams'),
+        ].filter(Boolean);
+        if (facts.length > 0) {
+            return `${label} ${wantsEligibility ? 'eligibility and key details' : 'cost details'}: ${facts.join(' ')}${url ? ` See the [${label}](${url}) for the full details.` : ''} Verify current rules and fees with the official authority.`;
+        }
+    }
+
+    if (wantsRecommendation) {
+        const colleges = relevant.filter((block) => (contextUrl(block) ?? '').startsWith('/colleges/')).slice(0, 4);
+        if (colleges.length > 0) {
+            const lines = colleges.map((block) => {
+                const label = (block.split('\n')[0] ?? '').replace(/^\[\d+\]\s*/, '').trim();
+                const url = contextUrl(block);
+                const facts = [
+                    contextField(block, 'Location'),
+                    contextField(block, 'Ownership'),
+                    contextField(block, 'Rating'),
+                    contextField(block, 'Average package'),
+                    contextField(block, 'Published fee range'),
+                    contextField(block, 'Accepted exams'),
+                ].filter(Boolean).slice(0, 4);
+                return `- **[${label}](${url ?? '#'})**${facts.length ? ` — ${facts.join(' · ')}` : ''}`;
+            });
+            return `Here is a practical Admission Sathi shortlist to compare. I’m using the published details below—not claiming one universal “best” college:\n${lines.join('\n')}\n\nYour best fit depends on rank/percentile, category, branch, state and budget. Share those and I’ll narrow this list. Verify current cut-offs and fees with the official counselling authority.`;
+        }
+    }
+    return null;
+}
 
 function deterministicOperationalAnswer(question: string, contextBlock: string, fallbackNotice?: string): string | null {
     const normalized = question.toLowerCase();
@@ -1014,10 +1124,13 @@ const mockAdapter: ProviderAdapter = {
     id: 'mock',
     model: 'extractive-retrieval',
     async complete({ contextBlock, question, fallbackNotice }) {
-        if (contextBlock === 'NO CONTEXT AVAILABLE.') return NO_CONTEXT_REPLY;
+        if (contextBlock === 'NO CONTEXT AVAILABLE.') return genericGuidanceAnswer(question);
 
         const operationalAnswer = deterministicOperationalAnswer(question, contextBlock, fallbackNotice);
         if (operationalAnswer) return operationalAnswer;
+
+        const groundedAnswer = groundedFallbackAnswer(question, contextBlock);
+        if (groundedAnswer) return groundedAnswer;
 
         const blocks = contextBlock.split('\n\n').slice(0, 4);
         const lines = blocks.map((block) => {
@@ -1029,7 +1142,7 @@ const mockAdapter: ProviderAdapter = {
         });
 
         return [
-            fallbackNotice,
+            fallbackNotice ? 'I’m using verified Admission Sathi information while the live assistant reconnects.' : undefined,
             `Admission Sathi source matches for “${truncate(question, 90)}”:`,
             '',
             ...lines,
@@ -1143,7 +1256,7 @@ function nvidiaRequestBody(request: ProviderRequest, stream: boolean) {
 }
 
 function nvidiaSignal(request: ProviderRequest): AbortSignal {
-    const timeout = AbortSignal.timeout(60_000);
+    const timeout = AbortSignal.timeout(env.NVIDIA_TIMEOUT_MS);
     return request.abortSignal ? AbortSignal.any([request.abortSignal, timeout]) : timeout;
 }
 
@@ -1270,13 +1383,11 @@ function providerErrorDetails(error: unknown): Record<string, unknown> {
 }
 
 function providerFailureNotice(error: unknown): string {
-    const details = providerErrorDetails(error);
-    if (details.statusCode === 404) {
-        return 'The selected NVIDIA model is not available for this API account (HTTP 404). Enable that model/function in NVIDIA Build or choose an entitled model; I’m showing verified Admission Sathi source matches.';
-    }
-    return typeof details.statusCode === 'number'
-        ? `The live NVIDIA model was unavailable (HTTP ${details.statusCode}), so I’m showing verified Admission Sathi source matches.`
-        : 'The live AI model was unavailable, so I’m showing verified Admission Sathi source matches.';
+    // Keep provider diagnostics in server logs. Exposing account/transport
+    // failures in the chat makes the experience feel broken and leaks
+    // implementation details to visitors.
+    void error;
+    return 'I’m using verified Admission Sathi information while the live assistant reconnects.';
 }
 
 const openaiAdapter: ProviderAdapter = {

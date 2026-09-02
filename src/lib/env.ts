@@ -47,6 +47,8 @@ const serverSchema = z.object({
     AI_MODEL: z.string().default('gpt-4o-mini'),
     NVIDIA_API_KEY: z.string().optional(),
     NVIDIA_BASE_URL: z.string().url().default('https://integrate.api.nvidia.com/v1'),
+    // Keep a slow or unavailable hosted model from making the chat feel broken.
+    NVIDIA_TIMEOUT_MS: z.coerce.number().int().min(5_000).max(60_000).default(20_000),
     OPENAI_API_KEY: z.string().optional(),
     ANTHROPIC_API_KEY: z.string().optional(),
 
