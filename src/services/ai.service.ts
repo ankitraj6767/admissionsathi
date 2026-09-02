@@ -723,7 +723,18 @@ async function retrieveBroadMatches(question: string): Promise<RetrievedPassage[
             const signal = isEngineering
                 ? /engineering|technology|b\.??tech|btech|computer science|jee/i
                 : /medical|mbbs|neet|dental|nursing|pharmacy|health/i;
-            const matched = passages.filter((passage) => signal.test(`${passage.label} ${passage.text}`));
+            const matched = passages.filter((passage) => {
+                const categories = contextField(passage.text, 'Categories');
+                // Structured categories are authoritative; only fall back to
+                // free text for older records that do not have categories.
+                if (categories) {
+                    const categorySignal = isEngineering
+                        ? /engineering|technology|computer|it|bca/i
+                        : /medical|mbbs|neet|dental|nursing|pharmacy|health/i;
+                    return categorySignal.test(categories);
+                }
+                return signal.test(`${passage.label} ${passage.text}`);
+            });
             return (matched.length > 0 ? matched : passages).slice(0, 6);
         }
         if (category === 'course') {
