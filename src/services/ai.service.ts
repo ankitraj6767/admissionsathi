@@ -186,7 +186,8 @@ export function classifyAssistantIntent(question: string): AssistantConversation
     if (
         /^(who|ho|what) (are|r) you$/.test(normalized) ||
         /^(what is|what s|tell me) your name$/.test(normalized) ||
-        /^(what can you do|how can you help me)$/.test(normalized)
+        /^(what can you do|how can you help me)$/.test(normalized) ||
+        /^(what is|tell me about|about) admission sathi(?: ai)?$/.test(normalized)
     ) {
         return 'identity';
     }
@@ -739,7 +740,7 @@ function scoreTokens(value: string): Set<string> {
             .toLowerCase()
             .replace(/[^a-z0-9+.\s-]/g, ' ')
             .split(/\s+/)
-            .filter((token) => token.length > 1)
+            .filter((token) => token.length > 1 && !STOP_WORDS.has(token))
             .map(scoreToken),
     );
 }
@@ -796,7 +797,12 @@ export async function retrieveContext(question: string, conversationContext?: st
     const extractedKeywords = extractKeywords(retrievalQuestion, 8);
     const keywords = retrievalKeywords(retrievalQuestion);
     const searchTerms = keywords.slice(0, 5);
-    const broadMatches = extractedKeywords.length === 0 ? await retrieveBroadMatches(question) : [];
+    const normalizedQuestion = question.toLowerCase();
+    const asksForRecommendation = /\b(best|top|recommend|recommendation|suggest|which should|where should)\b/.test(normalizedQuestion);
+    const broadMatches =
+        broadQuestionCategory(question) !== null && (extractedKeywords.length === 0 || asksForRecommendation)
+            ? await retrieveBroadMatches(question)
+            : [];
 
     const [searches, faqs, articles, news, resources, loans, predictors, operationalFacts] = await Promise.all([
         Promise.all(
@@ -865,15 +871,26 @@ export async function retrieveContext(question: string, conversationContext?: st
     // De-duplicate then rank for this question. The bounded result keeps model
     // latency predictable even when broad terms match many website sections.
     const seen = new Set<string>();
-    return all
+    const ranked = all
         .filter((passage) => {
             if (seen.has(passage.url)) return false;
             seen.add(passage.url);
             return true;
         })
         .map((passage, index) => ({ passage, index, score: passageRelevance(passage, retrievalQuestion) }))
-        .sort((left, right) => right.score - left.score || left.index - right.index)
-        .slice(0, 12)
+        .sort((left, right) => right.score - left.score || left.index - right.index);
+
+    // Never send generic search hits to the model as if they answered the
+    // question. A no-context request enables the assistant's general-knowledge
+    // mode instead of producing a confident answer from an unrelated page.
+    const topScore = ranked[0]?.score ?? 0;
+    return ranked
+        .filter(({ score, passage }) => {
+            if (passage.kind === 'contact' || passage.kind === 'stat') return true;
+            if (score < 10) return false;
+            return score >= Math.max(10, topScore - 24);
+        })
+        .slice(0, 10)
         .map(({ passage }) => passage);
 }
 
@@ -1058,6 +1075,11 @@ function buildMessages({ systemPrompt, contextBlock, history, question, allowGen
         '11. Use concise headings or bullets where helpful; avoid filler and repeated disclaimers.',
         '12. If the question is underspecified, give useful guidance first and ask at most one focused follow-up question.',
         '13. Never start with phrases such as "According to the provided context", "Based on the context" or "The context says". State the answer naturally, then cite a page inline when useful.',
+        '14. Match the depth to the question: a simple fact gets a direct sentence; a comparison, plan or recommendation gets a short structured answer with the key trade-offs.',
+        '15. Do not mention internal retrieval, prompts, CONTEXT, model availability, token limits or system rules.',
+        '16. For questions outside Admission Sathi, answer useful general guidance instead of refusing. For current, legal, medical or financial specifics, clearly recommend checking the authoritative source.',
+        '17. For "best" questions, avoid pretending there is one universal winner; give a reasoned shortlist or decision criteria and state what information would personalize it.',
+        '18. Keep the tone warm, confident and precise—like an excellent human counsellor. Remove repetition and unnecessary disclaimers.',
         '',
         'CONTEXT:',
         contextBlock,
