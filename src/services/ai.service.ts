@@ -663,7 +663,10 @@ async function retrieveLoans(question: string, keywords: string[], limit = 3): P
 }
 
 async function retrievePredictors(question: string, limit = 3): Promise<RetrievedPassage[]> {
-    if (!/\b(predict(or|ion)?|rank|percentile|score|college chance|which colleges?)\b/i.test(question)) return [];
+    // “Which college?” is a recommendation, not automatically a predictor
+    // request. Only load predictor records when the user supplies a predictor
+    // signal such as rank, percentile, score, chance or the word predictor.
+    if (!/\b(predict(or|ion)?|rank|percentile|score|college chance|cut-?off|closing rank)\b/i.test(question)) return [];
     try {
         const predictors = await listPredictors({ limit: 24 });
         const normalized = question.toLowerCase();
@@ -1028,6 +1031,7 @@ function groundedFallbackAnswer(question: string, contextBlock: string): string 
     const blocks = contextBlock.split(/\n\n+/).filter(Boolean);
     const normalized = question.toLowerCase();
     const wantsRecommendation = /\b(best|top|recommend|which|where|should i|choose|select)\b/.test(normalized);
+    const feelsDistressed = /\b(depress|depressed|stressed|anxious|overwhelmed|confused)\b/.test(normalized);
     const wantsEligibility = /\b(eligib|criteria|requirement|qualification)\b/.test(normalized);
     const wantsFees = /\b(fee|fees|cost|tuition|expense)\b/.test(normalized);
 
@@ -1036,6 +1040,22 @@ function groundedFallbackAnswer(question: string, contextBlock: string): string 
         return url.startsWith('/colleges/') || url.startsWith('/courses/') || url.startsWith('/exams/') || url.startsWith('/scholarships/');
     });
     if (relevant.length === 0) return null;
+
+    const colleges = relevant.filter((block) => (contextUrl(block) ?? '').startsWith('/colleges/')).slice(0, 4);
+    if (feelsDistressed && colleges.length > 0) {
+        const lines = colleges.map((block) => {
+            const label = (block.split('\n')[0] ?? '').replace(/^\[\d+\]\s*/, '').trim();
+            const url = contextUrl(block);
+            const facts = [
+                contextField(block, 'Location'),
+                contextField(block, 'Ownership'),
+                contextField(block, 'Rating'),
+                contextField(block, 'Published fee range'),
+            ].filter(Boolean).slice(0, 3);
+            return `- **[${label}](${url ?? '#'})**${facts.length ? ` — ${facts.join(' · ')}` : ''}`;
+        });
+        return `I’m sorry this feels overwhelming. You do not need to decide all at once. Here is a practical Admission Sathi shortlist to compare:\n${lines.join('\n')}\n\nCompare branch fit, recognition, placements, total cost and location. Share your exam/rank or percentile, category, preferred branch, state and budget and I’ll narrow it further. If you need immediate emotional support in India, Tele-MANAS is available at **14416**.`;
+    }
 
     if (wantsEligibility || wantsFees) {
         const block = relevant.find((candidate) =>
@@ -1055,7 +1075,6 @@ function groundedFallbackAnswer(question: string, contextBlock: string): string 
     }
 
     if (wantsRecommendation) {
-        const colleges = relevant.filter((block) => (contextUrl(block) ?? '').startsWith('/colleges/')).slice(0, 4);
         if (colleges.length > 0) {
             const lines = colleges.map((block) => {
                 const label = (block.split('\n')[0] ?? '').replace(/^\[\d+\]\s*/, '').trim();
