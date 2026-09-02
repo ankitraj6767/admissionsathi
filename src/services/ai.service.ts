@@ -263,7 +263,7 @@ function retrievalKeywords(question: string): string[] {
     const aliases = QUERY_ALIASES
         .filter(([pattern]) => pattern.test(question))
         .flatMap(([, terms]) => terms);
-    return Array.from(new Set([...extracted, ...aliases, ...topicTerms])).slice(0, 12);
+    return Array.from(new Set([...aliases, ...extracted, ...topicTerms])).slice(0, 12);
 }
 
 /**
@@ -839,6 +839,7 @@ export async function retrieveContext(question: string, conversationContext?: st
         /\b(best|top|recommend|recommendation|suggest|which|where)\b/.test(normalizedQuestion) ||
         /\bshould\s+i\s+(choose|take|select|join|apply)\b/.test(normalizedQuestion) ||
         /\b(in|for)\s+which\s+(college|course|university|institute)\b/.test(normalizedQuestion);
+    const broadRecommendation = asksForRecommendation && broadQuestionCategory(question) !== null;
     const broadMatches =
         broadQuestionCategory(question) !== null && (extractedKeywords.length === 0 || asksForRecommendation)
             ? await retrieveBroadMatches(question)
@@ -846,16 +847,18 @@ export async function retrieveContext(question: string, conversationContext?: st
 
     const [searches, faqs, articles, news, resources, loans, predictors, operationalFacts] = await Promise.all([
         Promise.all(
-            (searchTerms.length > 0 ? searchTerms : [retrievalQuestion.slice(0, 60)]).map((term) =>
+            (searchTerms.length > 0 ? searchTerms.slice(0, broadRecommendation ? 2 : 5) : [retrievalQuestion.slice(0, 60)]).map((term) =>
                 globalSearch(term, { limitPerGroup: 3 }).catch(() => null),
             ),
         ),
-        retrieveFaqs(keywords),
-        retrieveArticles(keywords),
-        searchNewsPassages(keywords, 3).catch(() => []),
-        searchResourcePassages(keywords, 3).catch(() => []),
+        broadRecommendation ? Promise.resolve([] as RetrievedPassage[]) : retrieveFaqs(keywords),
+        broadRecommendation ? Promise.resolve([] as RetrievedPassage[]) : retrieveArticles(keywords),
+        broadRecommendation ? Promise.resolve([]) : searchNewsPassages(keywords, 3).catch(() => []),
+        broadRecommendation ? Promise.resolve([]) : searchResourcePassages(keywords, 3).catch(() => []),
         retrieveLoans(retrievalQuestion, keywords),
-        retrievePredictors(retrievalQuestion),
+        broadRecommendation && !/\b(predict(or|ion)?|rank|percentile|score|chance|cut-?off|closing rank)\b/i.test(question)
+            ? Promise.resolve([] as RetrievedPassage[])
+            : retrievePredictors(retrievalQuestion),
         retrieveOperationalFacts(question),
     ]);
 
