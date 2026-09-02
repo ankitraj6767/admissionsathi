@@ -846,11 +846,13 @@ export async function retrieveContext(question: string, conversationContext?: st
             : [];
 
     const [searches, faqs, articles, news, resources, loans, predictors, operationalFacts] = await Promise.all([
-        Promise.all(
-            (searchTerms.length > 0 ? searchTerms.slice(0, broadRecommendation ? 2 : 5) : [retrievalQuestion.slice(0, 60)]).map((term) =>
-                globalSearch(term, { limitPerGroup: 3 }).catch(() => null),
+        broadRecommendation
+            ? Promise.resolve([])
+            : Promise.all(
+                (searchTerms.length > 0 ? searchTerms.slice(0, 5) : [retrievalQuestion.slice(0, 60)]).map((term) =>
+                    globalSearch(term, { limitPerGroup: 3 }).catch(() => null),
+                ),
             ),
-        ),
         broadRecommendation ? Promise.resolve([] as RetrievedPassage[]) : retrieveFaqs(keywords),
         broadRecommendation ? Promise.resolve([] as RetrievedPassage[]) : retrieveArticles(keywords),
         broadRecommendation ? Promise.resolve([]) : searchNewsPassages(keywords, 3).catch(() => []),
