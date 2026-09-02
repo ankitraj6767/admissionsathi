@@ -221,21 +221,5 @@ See [docs/testing.md](docs/testing.md) for the full breakdown. The `analyze` scr
     └── types/                  # Shared types and Auth.js module augmentation
 ```
 
-## Demo credentials
-
-Created by `npm run db:seed` (`src/db/seeds/seed-core.ts`). Emails and passwords for the admin and student accounts come from `SEED_*` environment variables, with these defaults:
-
-| Account | Email | Password | Roles |
-| --- | --- | --- | --- |
-| Super admin | `admin@admissionsathi.org` (`SEED_SUPER_ADMIN_EMAIL`) | `Admin@12345` (`SEED_SUPER_ADMIN_PASSWORD`) | `super_admin` |
-| Student | `student@admissionsathi.org` (`SEED_STUDENT_EMAIL`) | `Student@12345` (`SEED_STUDENT_PASSWORD`) | `student` |
-| Content Manager (demo) | `content@admissionsathi.org` | `Staff@12345` | `content_manager` |
-| College Manager (demo) | `colleges@admissionsathi.org` | `Staff@12345` | `college_manager` |
-| Exam Manager (demo) | `exams@admissionsathi.org` | `Staff@12345` | `exam_manager` |
-| Predictor Manager (demo) | `predictors@admissionsathi.org` | `Staff@12345` | `predictor_manager` |
-| Lead Manager (demo) | `leads@admissionsathi.org` | `Staff@12345` | `lead_manager` |
-| Finance Manager (demo) | `finance@admissionsathi.org` | `Staff@12345` | `finance_manager` |
-| Support Agent (demo) | `support@admissionsathi.org` | `Staff@12345` | `support_agent` |
-| Analyst (demo) | `analyst@admissionsathi.org` | `Staff@12345` | `analyst` |
 
 The staff password `Staff@12345` is hard-coded in the seed script. These accounts exist for local development only — delete or rotate them before any deployment that is reachable publicly.
