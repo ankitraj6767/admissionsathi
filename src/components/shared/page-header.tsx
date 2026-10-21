@@ -77,8 +77,8 @@ export function PageHeader({
     return (
         <section
             className={cn(
-                'relative isolate min-h-[150px] overflow-hidden border-b border-white/30 md:min-h-[184px] lg:flex lg:min-h-[442px] lg:flex-col lg:justify-center',
-                dark ? 'text-white' : 'text-navy-800',
+                'relative isolate min-h-[150px] overflow-hidden border-b border-white/30 md:min-h-[184px] lg:flex lg:min-h-[442px] lg:flex-col lg:justify-end',
+                dark ? 'text-[#17324b]' : 'text-navy-800',
             )}
         >
             <PageBannerImage
@@ -90,18 +90,18 @@ export function PageHeader({
                 {breadcrumbs?.length ? (
                     <Breadcrumbs
                         items={breadcrumbs}
-                        tone={dark ? 'dark' : 'light'}
-                        className={cn('mb-3', dark ? 'banner-copy-on-image' : 'banner-copy-on-image-light')}
+                        tone="light"
+                        className={cn('mb-3', dark ? 'banner-copy-on-photo' : 'banner-copy-on-image-light')}
                     />
                 ) : null}
 
                 <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-                    <div className={cn('min-w-0', dark ? 'banner-copy-on-image' : 'banner-copy-on-image-light')}>
+                    <div className={cn('min-w-0', dark ? 'banner-copy-on-photo' : 'banner-copy-on-image-light')}>
                         {eyebrow ? (
                             <p
                                 className={cn(
                                     'mb-1 text-[10.5px] font-bold uppercase tracking-[0.14em]',
-                                    dark ? 'text-orange-200' : 'text-orange-700',
+                                    dark ? 'text-orange-800' : 'text-orange-700',
                                 )}
                             >
                                 {eyebrow}
@@ -110,7 +110,7 @@ export function PageHeader({
                         <h1
                             className={cn(
                                 'max-w-4xl font-display text-[25px] font-extrabold leading-[1.12] tracking-[-0.02em] md:text-[32px] lg:text-[36px]',
-                                dark ? 'text-white' : 'text-navy-800',
+                                dark ? 'text-[#17324b]' : 'text-navy-800',
                             )}
                         >
                             {title}
@@ -119,7 +119,7 @@ export function PageHeader({
                             <p
                                 className={cn(
                                     'mt-2 max-w-3xl text-[13px] leading-relaxed md:text-[13.5px]',
-                                    dark ? 'text-white/80' : 'text-ink-soft',
+                                    dark ? 'text-[#30485f]' : 'text-ink-soft',
                                 )}
                             >
                                 {description}
@@ -127,10 +127,14 @@ export function PageHeader({
                         ) : null}
                     </div>
 
-                    {actions ? <div className="flex shrink-0 flex-wrap gap-2">{actions}</div> : null}
+                    {actions ? (
+                        <div className={cn('flex shrink-0 flex-wrap gap-2', dark && 'banner-actions-on-photo')}>
+                            {actions}
+                        </div>
+                    ) : null}
                 </div>
 
-                {children ? <div className="mt-4">{children}</div> : null}
+                {children ? <div className={cn('mt-4', dark && 'banner-nav-on-photo')}>{children}</div> : null}
             </div>
         </section>
     );

@@ -206,6 +206,36 @@
     text-shadow: 0 1px 3px rgb(255 255 255 / 0.95), 0 2px 12px rgb(255 255 255 / 0.8);
   }
 
+  /* Main photo heroes use dark ink with a soft light halo instead of white copy. */
+  .banner-copy-on-photo {
+    color: #17324b;
+    text-shadow: 0 1px 0 rgb(255 255 255 / 0.92), 0 2px 10px rgb(255 255 255 / 0.8);
+  }
+
+  .banner-nav-on-photo a[class*="bg-white/10"] {
+    color: #17324b !important;
+    background-color: rgb(255 255 255 / 0.88) !important;
+    border-color: rgb(255 255 255 / 0.96) !important;
+    text-shadow: none;
+  }
+
+  .banner-nav-on-photo a[class*="bg-orange"] {
+    color: #17324b !important;
+    text-shadow: none;
+  }
+
+  .banner-actions-on-photo :is(a, button):not([class*="bg-orange"]):not([class*="bg-navy"]) {
+    color: #17324b !important;
+    background-color: rgb(255 255 255 / 0.94) !important;
+    border-color: rgb(255 255 255 / 0.96) !important;
+    text-shadow: none;
+  }
+
+  .banner-actions-on-photo :is(a, button)[class*="bg-orange"] {
+    color: #17324b !important;
+    text-shadow: none;
+  }
+
   @media (min-width: 768px) {
     .shell {
       padding-inline: 24px;
