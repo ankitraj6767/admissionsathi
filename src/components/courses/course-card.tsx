@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { IntentLink as Link } from '@/components/ui/intent-link';
 import { ArrowRight, Building2, Clock, IndianRupee } from 'lucide-react';
 import { Badge, IconTile } from '@/components/ui/primitives';
 import { formatCompactINR } from '@/lib/utils';

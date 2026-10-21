@@ -6,8 +6,7 @@ import { CourseCard, toCourseCard } from '@/components/courses/course-card';
 import { CtaBanner, SectionCard } from '@/components/shared/content-blocks';
 import { EmptyState } from '@/components/ui/primitives';
 import { getCategoryDetail } from '@/services/course.service';
-import { listColleges } from '@/db/repositories/college.repository';
-import { toPlain } from '@/db/repositories/base.repository';
+import { searchColleges } from '@/services/college.service';
 import { buildMetadata } from '@/lib/seo/metadata';
 import { JsonLd, buildBreadcrumbJsonLd, buildItemListJsonLd } from '@/lib/seo/json-ld';
 
@@ -41,9 +40,7 @@ export default async function CourseCategoryPage({
     if (!detail) notFound();
 
     const { category, courses } = detail;
-    const colleges = toPlain(
-        await listColleges({ categoryId: String(category._id), pageSize: 8, sort: 'ranking' }),
-    );
+    const colleges = await searchColleges({ categoryId: String(category._id), pageSize: 8, sort: 'ranking' });
 
     return (
         <>

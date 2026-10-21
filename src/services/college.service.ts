@@ -107,10 +107,11 @@ export async function resolveCollegeFilters(
     };
 }
 
-export async function searchColleges(filters: CollegeListFilters): Promise<Paginated<CollegeDoc>> {
-    const result = await listColleges(filters);
-    return toPlain(result);
-}
+export const searchColleges = cached(
+    async (filters: CollegeListFilters): Promise<Paginated<CollegeDoc>> => toPlain(await listColleges(filters)),
+    ['college-search'],
+    { tags: [CACHE_TAGS.colleges], revalidate: CACHE_TTL.short },
+);
 
 /** Facet counts for the filter panel, computed from the current filter set. */
 export const getCollegeFacets = cached(
@@ -142,7 +143,7 @@ export const getCollegeFacets = cached(
         };
     },
     ['college-facets'],
-    { tags: [CACHE_TAGS.colleges], revalidate: CACHE_TTL.long },
+    { tags: [CACHE_TAGS.colleges, CACHE_TAGS.geo, CACHE_TAGS.courseCategories, CACHE_TAGS.exams], revalidate: CACHE_TTL.long },
 );
 
 export async function buildCollegeFilterGroups(): Promise<FilterGroup[]> {

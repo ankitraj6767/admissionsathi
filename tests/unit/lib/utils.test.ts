@@ -140,7 +140,8 @@ describe('formatRelativeTime', () => {
 
     it('falls back to an absolute date beyond 30 days', () => {
         expect(formatRelativeTime(new Date(Date.now() - 400 * 86_400_000))).toMatch(
-            /\d{2} [A-Za-z]{3} \d{4}/,
+            // Intl's short month may contain four letters (for example, Sept).
+            /\d{2} [A-Za-z]{3,4} \d{4}/,
         );
     });
 

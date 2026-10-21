@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { IntentLink as Link } from '@/components/ui/intent-link';
 import { Card, EmptyState, SectionHeader, toneStyles } from '@/components/ui/primitives';
 import { Icon } from '@/components/ui/icon';
 import { cn, formatCompactCount } from '@/lib/utils';

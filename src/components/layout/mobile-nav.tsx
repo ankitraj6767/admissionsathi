@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+import { IntentLink as Link } from '@/components/ui/intent-link';
 import { usePathname } from 'next/navigation';
 import { ChevronDown, Menu, Phone, X } from 'lucide-react';
 import { cn } from '@/lib/utils';

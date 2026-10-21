@@ -6,6 +6,7 @@ import { connectToDatabase } from '@/db/connect';
 import { siteConfig } from '@/config/site';
 import { envPlaceholderIssues } from '@/lib/env';
 import { logger } from '@/lib/logger';
+import { markReadFailure } from '@/lib/db-read-context';
 import type { Paginated } from '@/types/common';
 
 /**
@@ -18,7 +19,10 @@ import type { Paginated } from '@/types/common';
  * public page.
  */
 async function connectForRead(): Promise<boolean> {
-    if (envPlaceholderIssues().length > 0) return false;
+    if (envPlaceholderIssues().length > 0) {
+        markReadFailure();
+        return false;
+    }
     await connectToDatabase();
     return true;
 }
@@ -45,6 +49,7 @@ async function safeRead<T>(operation: string, fallback: T, read: () => Promise<T
     try {
         return await read();
     } catch (error) {
+        markReadFailure();
         logger.warn('db.read_failed', {
             operation,
             error: error instanceof Error ? error.message : String(error),

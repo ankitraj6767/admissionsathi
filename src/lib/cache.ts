@@ -1,5 +1,7 @@
 import 'server-only';
 import { unstable_cache } from 'next/cache';
+import { createHash } from 'node:crypto';
+import { markReadFailure, UncacheableRead, withHealthyReads } from './db-read-context';
 
 /**
  * Cache tags used with `revalidateTag()` after mutations.
@@ -94,8 +96,44 @@ export function cached<TArgs extends unknown[], TResult>(
     keyParts: string[],
     options: { tags: string[]; revalidate?: number } = { tags: [] },
 ) {
-    return unstable_cache(fn, keyParts, {
+    // Include the original loader's source: the wrapper below has identical source
+    // for every loader. Version the namespace to discard old cached outage values.
+    const sourceKey = createHash('sha256').update(fn.toString()).digest('hex');
+    const databaseKey = createHash('sha256')
+        .update(process.env.MONGODB_URI ?? '')
+        .update('\0')
+        .update(process.env.MONGODB_DB_NAME ?? '')
+        .digest('hex');
+    const pending = new Map<string, Promise<TResult>>();
+    const load = unstable_cache(async (...args: TArgs): Promise<TResult> => {
+        const key = JSON.stringify(args);
+        const existing = pending.get(key);
+        if (existing) return existing;
+
+        const promise = withHealthyReads(() => fn(...args));
+        pending.set(key, promise);
+        try {
+            return await promise;
+        } finally {
+            pending.delete(key);
+        }
+    }, ['healthy-reads-v1', databaseKey, ...keyParts, sourceKey], {
         tags: options.tags,
         revalidate: options.revalidate ?? CACHE_TTL.medium,
     });
+
+    return async (...args: TArgs): Promise<TResult> => {
+        try {
+            return await load(...args);
+        } catch (error) {
+            if (!(error instanceof UncacheableRead)) throw error;
+            markReadFailure();
+            // A failed lookup is not evidence that a detail page does not exist.
+            // Let the retryable error boundary handle it instead of returning 404.
+            if (error.fallback === null) throw error;
+            // Next retains an existing good value when revalidation rejects. On a
+            // cold miss, keep the page usable without persisting its empty fallback.
+            return error.fallback as TResult;
+        }
+    };
 }

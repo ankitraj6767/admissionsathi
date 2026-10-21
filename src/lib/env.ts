@@ -1,5 +1,6 @@
 import 'server-only';
 import { z } from 'zod';
+import { resolveMongoDatabaseName } from './mongodb-config';
 
 /**
  * Server-side environment validation.
@@ -97,6 +98,7 @@ let placeholderIssues: string[] = [];
 
 function loadEnv(): ServerEnv {
     const raw = compactEnv(process.env);
+    raw.MONGODB_DB_NAME = resolveMongoDatabaseName(raw.MONGODB_URI ?? '', raw.MONGODB_DB_NAME);
     const parsed = serverSchema.safeParse(raw);
 
     if (parsed.success) return parsed.data;

@@ -33,10 +33,14 @@ export const getCounsellorDirectory = cached(
     { tags: [CACHE_TAGS.counsellors], revalidate: CACHE_TTL.long },
 );
 
-export const getCounsellor = cache(async (slug: string) => {
+const loadCounsellor = cached(async (slug: string) => {
     const counsellor = await getCounsellorBySlug(slug);
     return counsellor ? toPlain(counsellor) : null;
+}, ['counsellor-detail'], {
+    tags: [CACHE_TAGS.counsellors], revalidate: CACHE_TTL.medium,
 });
+
+export const getCounsellor = cache(async (slug: string) => loadCounsellor(slug));
 
 export interface SlotOption {
     iso: string;

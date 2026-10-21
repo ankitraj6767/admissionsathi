@@ -29,12 +29,16 @@ export const listLoanProviders = cached(
     { tags: [CACHE_TAGS.loanProviders], revalidate: CACHE_TTL.long },
 );
 
-export const getLoanProvider = cache(async (slug: string) => {
+const loadLoanProvider = cached(async (slug: string) => {
     const provider = await getLoanProviderBySlug(slug);
     if (!provider) return null;
     const products = await listProductsForProvider(provider._id, 10);
     return toPlain({ provider, products });
+}, ['loan-provider-detail'], {
+    tags: [CACHE_TAGS.loanProviders], revalidate: CACHE_TTL.medium,
 });
+
+export const getLoanProvider = cache(async (slug: string) => loadLoanProvider(slug));
 
 export async function saveLoanCalculation(input: {
     userId?: string;
@@ -116,7 +120,7 @@ export async function searchScholarships(
     );
 }
 
-export const getScholarship = cache(async (slug: string) => {
+const loadScholarship = cached(async (slug: string) => {
     const scholarship = await getScholarshipBySlug(slug);
     if (!scholarship) return null;
 
@@ -127,7 +131,11 @@ export const getScholarship = cache(async (slug: string) => {
     );
 
     return toPlain({ scholarship, related });
+}, ['scholarship-detail'], {
+    tags: [CACHE_TAGS.scholarships], revalidate: CACHE_TTL.medium,
 });
+
+export const getScholarship = cache(async (slug: string) => loadScholarship(slug));
 
 export const listFeaturedScholarships = cached(
     async () => toPlain(await listFeaturedScholarshipRows(8)),

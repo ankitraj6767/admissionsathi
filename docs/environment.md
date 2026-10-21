@@ -19,7 +19,7 @@ Legend: **Required** = validation fails without it. Scope **server** = validated
 | --- | --- | --- | --- | --- |
 | `NODE_ENV` | No (default `development`) | server | One of `development`, `test`, `production`. Drives pool size, `autoIndex`, CSP strictness, stack-trace verbosity | `development` |
 | `MONGODB_URI` | **Yes** | server | MongoDB connection string. Must be non-empty | `mongodb+srv://user:pass@cluster.mongodb.net/admission-sathi?retryWrites=true&w=majority` |
-| `MONGODB_DB_NAME` | No (default `admission-sathi`) | server | Passed as Mongoose `dbName`; overrides any database in the URI path | `admission-sathi` |
+| `MONGODB_DB_NAME` | No (URI database, else `admission-sathi`) | server | Explicit values override the URI database. Production uses `admissionssathi` | `admissionssathi` |
 | `MONGOOSE_DEBUG` | No | server | `true` logs every Mongoose query. Ignored in production. Read directly in `src/db/connect.ts`, not part of the schema | `false` |
 | `MONGOOSE_AUTO_INDEX` | No (default off) | server | `true` lets Mongoose create indexes on model use. Off by default because index builds against a shared Atlas tier slow every concurrent query (measured 1.5s vs 70ms). Always on under `NODE_ENV=test`. Use `npm run db:indexes` instead | `false` |
 | `SKIP_ENV_VALIDATION` | No | server | `true` turns env validation errors into warnings during a build | `false` |

@@ -1,5 +1,5 @@
 import Image from 'next/image';
-import Link from 'next/link';
+import { IntentLink as Link } from '@/components/ui/intent-link';
 import { GraduationCap, MapPin, TrendingUp } from 'lucide-react';
 import { Badge, RatingStars } from '@/components/ui/primitives';
 import { CollegeCardActions } from './college-card-actions';

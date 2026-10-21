@@ -28,7 +28,7 @@ The app needs a MongoDB 6+ database. Either a local `mongod` (`mongodb://127.0.0
    mongodb+srv://<user>:<password>@<cluster>.mongodb.net/admission-sathi?retryWrites=true&w=majority
    ```
    URL-encode special characters in the password (`@` → `%40`, `#` → `%23`, `:` → `%3A`).
-6. Put it in `.env.local` as `MONGODB_URI`. `MONGODB_DB_NAME` (default `admission-sathi`) is passed as `dbName` and wins over any database in the URI path.
+6. Put it in `.env.local` as `MONGODB_URI`. An explicit `MONGODB_DB_NAME` wins over the URI database; otherwise the URI database is used (falling back to `admission-sathi` only when neither is set). This website’s existing content is in `admissionssathi`, so use that value when connecting to its Atlas cluster.
 
 ## 3. Environment file
 

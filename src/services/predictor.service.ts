@@ -140,10 +140,14 @@ export const getPredictorList = cached(
     { tags: [CACHE_TAGS.predictors], revalidate: CACHE_TTL.long },
 );
 
-export const getPredictor = cache(async (slug: string) => {
+const loadPredictor = cached(async (slug: string) => {
     const predictor = await getPredictorBySlug(slug);
     return predictor ? toPlain(predictor) : null;
+}, ['predictor-detail'], {
+    tags: [CACHE_TAGS.predictors], revalidate: CACHE_TTL.medium,
 });
+
+export const getPredictor = cache(async (slug: string) => loadPredictor(slug));
 
 /** Options for the branch / state selects, derived from the published dataset. */
 export const getPredictorOptions = cached(

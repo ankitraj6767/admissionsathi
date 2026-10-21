@@ -66,14 +66,22 @@ export async function resolveCourseFilters(
     };
 }
 
-export async function searchCourses(filters: CourseListFilters): Promise<Paginated<CourseDoc>> {
-    return toPlain(await listCourses(filters));
-}
+export const searchCourses = cached(
+    async (filters: CourseListFilters): Promise<Paginated<CourseDoc>> => toPlain(await listCourses(filters)),
+    ['course-search'],
+    { tags: [CACHE_TAGS.courses], revalidate: CACHE_TTL.short },
+);
+
+export const getCourseCategoryOptions = cached(
+    async () => toPlain(await listCourseCategories({ limit: 12 })),
+    ['course-category-options'],
+    { tags: [CACHE_TAGS.courseCategories], revalidate: CACHE_TTL.long },
+);
 
 export const buildCourseFilterGroups = cached(
     async (): Promise<FilterGroup[]> => {
         const [categories, exams] = await Promise.all([
-            listCourseCategories({ limit: 12 }),
+            getCourseCategoryOptions(),
             listPublishedExamOptions({ limit: 20 }),
         ]);
 
@@ -128,7 +136,7 @@ export const buildCourseFilterGroups = cached(
         ];
     },
     ['course-filter-groups'],
-    { tags: [CACHE_TAGS.courses], revalidate: CACHE_TTL.long },
+    { tags: [CACHE_TAGS.courses, CACHE_TAGS.courseCategories, CACHE_TAGS.exams], revalidate: CACHE_TTL.long },
 );
 
 /**
@@ -162,9 +170,14 @@ export const getCourseDetail = cache(async (slug: string) =>
     reviveDates(await loadCourseDetail(slug)),
 );
 
-export const getCategoryDetail = cache(async (slug: string) => {
+const loadCategoryDetail = cached(async (slug: string) => {
     const category = await getCourseCategoryBySlug(slug);
     if (!category) return null;
     const courses = await listCourses({ categoryId: String(category._id), pageSize: 24 });
     return toPlain({ category, courses });
+}, ['course-category-detail'], {
+    tags: [CACHE_TAGS.courseCategories, CACHE_TAGS.courses],
+    revalidate: CACHE_TTL.medium,
 });
+
+export const getCategoryDetail = cache(async (slug: string) => loadCategoryDetail(slug));

@@ -4,8 +4,7 @@ import { PageHeader } from '@/components/shared/page-header';
 import { Pagination } from '@/components/shared/pagination';
 import { SearchBox } from '@/components/search/search-box';
 import { Badge, Chip, EmptyState } from '@/components/ui/primitives';
-import { listArticles } from '@/db/repositories/content.repository';
-import { toPlain } from '@/db/repositories/base.repository';
+import { searchArticles } from '@/services/editorial.service';
 import { formatDate } from '@/lib/utils';
 import { buildMetadata } from '@/lib/seo/metadata';
 import { JsonLd, buildBreadcrumbJsonLd, buildItemListJsonLd } from '@/lib/seo/json-ld';
@@ -49,16 +48,14 @@ export default async function ArticlesPage({
     searchParams: Promise<{ q?: string; category?: string; tag?: string; page?: string; sort?: string }>;
 }) {
     const params = await searchParams;
-    const result = toPlain(
-        await listArticles({
-            q: params.q,
-            category: params.category,
-            tag: params.tag,
-            page: Number(params.page) || 1,
-            pageSize: 12,
-            sort: params.sort,
-        }),
-    );
+    const result = await searchArticles({
+        q: params.q,
+        category: params.category,
+        tag: params.tag,
+        page: Number(params.page) || 1,
+        pageSize: 12,
+        sort: params.sort,
+    });
 
     return (
         <>

@@ -46,15 +46,13 @@ const nextConfig: NextConfig = {
     experimental: {
         optimizePackageImports: ['lucide-react', 'recharts'],
         /*
-         * Client router cache. Every route here renders dynamically (the header
-         * reads the session), and without this the router discards a segment's
-         * payload almost immediately, so going back to a list page re-runs its
-         * queries. Holding dynamic payloads for 5 minutes makes back/forward and
-         * repeat visits paint from memory with no server work at all.
+         * Public data is cached on the server. Do not retain a dynamic outage
+         * screen for five minutes in the browser after MongoDB has recovered.
+         * Keep full prefetches briefly so navigation on intent stays immediate.
          */
         staleTimes: {
-            dynamic: 300,
-            static: 600,
+            dynamic: 0,
+            static: 30,
         },
         /*
          * Prefetch the real RSC payload of a dynamic route on hover/touch-start,

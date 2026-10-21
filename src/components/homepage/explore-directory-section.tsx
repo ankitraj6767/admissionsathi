@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { IntentLink as Link } from '@/components/ui/intent-link';
 import { Card, SectionHeader } from '@/components/ui/primitives';
 import { Icon } from '@/components/ui/icon';
 import type { DirectoryGeoLinks } from '@/services/home-data.service';

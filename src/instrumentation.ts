@@ -38,17 +38,9 @@ export async function register(): Promise<void> {
         const db = connection.connection.db;
         if (!db) return;
 
-        /*
-         * Open the rest of the pool up front. `minPoolSize` sockets are created in
-         * the background after connect, but each still needs its own TLS and auth
-         * handshake — about 2s here — and the first request would otherwise wait on
-         * one. Running a few trivial commands concurrently forces those handshakes
-         * to happen now. `ping` is used rather than a collection read so this stays
-         * independent of the schema and cannot be affected by a missing index.
-         */
-        await Promise.all(
-            Array.from({ length: 4 }, () => db.admin().command({ ping: 1 }).catch(() => undefined)),
-        );
+        // Warm one socket without forcing four more open in every cold instance.
+        // Let a failed ping reach the warning below instead of logging success.
+        await db.admin().command({ ping: 1, maxTimeMS: 5_000 });
 
         logger.info('startup.db_warmed', { ms: Date.now() - started });
     } catch (error) {

@@ -3,8 +3,7 @@ import Link from 'next/link';
 import { PageHeader } from '@/components/shared/page-header';
 import { Pagination } from '@/components/shared/pagination';
 import { Badge, Chip, EmptyState } from '@/components/ui/primitives';
-import { listNews } from '@/db/repositories/content.repository';
-import { toPlain } from '@/db/repositories/base.repository';
+import { searchNews } from '@/services/editorial.service';
 import { TRENDING_CATEGORIES, TRENDING_CATEGORY_LABELS, type TrendingCategory } from '@/config/constants';
 import { formatDate, formatRelativeTime } from '@/lib/utils';
 import { buildMetadata } from '@/lib/seo/metadata';
@@ -25,14 +24,12 @@ export default async function NewsPage({
     searchParams: Promise<{ category?: string; page?: string; q?: string }>;
 }) {
     const params = await searchParams;
-    const result = toPlain(
-        await listNews({
-            q: params.q,
-            category: params.category,
-            page: Number(params.page) || 1,
-            pageSize: 15,
-        }),
-    );
+    const result = await searchNews({
+        q: params.q,
+        category: params.category,
+        page: Number(params.page) || 1,
+        pageSize: 15,
+    });
 
     return (
         <>

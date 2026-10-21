@@ -10,11 +10,11 @@ import { EmptyState, IconTile } from '@/components/ui/primitives';
 import {
     COURSE_SORTS,
     buildCourseFilterGroups,
+    getCourseCategoryOptions,
     resolveCourseFilters,
     searchCourses,
     type CourseSearchParams,
 } from '@/services/course.service';
-import { listCourseCategories } from '@/db/repositories/course.repository';
 import { buildMetadata } from '@/lib/seo/metadata';
 import { JsonLd, buildBreadcrumbJsonLd, buildItemListJsonLd } from '@/lib/seo/json-ld';
 
@@ -41,13 +41,12 @@ export default async function CoursesPage({
     searchParams: Promise<CourseSearchParams>;
 }) {
     const params = await searchParams;
-    const [filters, filterGroups, categories] = await Promise.all([
-        resolveCourseFilters(params),
+    const [result, filterGroups, categories] = await Promise.all([
+        resolveCourseFilters(params).then(searchCourses),
         buildCourseFilterGroups(),
-        listCourseCategories({ limit: 12 }),
+        getCourseCategoryOptions(),
     ]);
 
-    const result = await searchCourses(filters);
     const cards = result.items.map(toCourseCard);
 
     return (

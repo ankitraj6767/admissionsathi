@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { IntentLink as Link } from '@/components/ui/intent-link';
 import { ArrowRight } from 'lucide-react';
 import { Card } from '@/components/ui/primitives';
 import { Icon } from '@/components/ui/icon';

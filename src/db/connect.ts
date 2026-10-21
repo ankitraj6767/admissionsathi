@@ -1,6 +1,7 @@
 import 'server-only';
 import mongoose, { type Mongoose } from 'mongoose';
 import { assertRuntimeEnv, env, isProduction, isTest } from '@/lib/env';
+import { markReadFailure } from '@/lib/db-read-context';
 
 /**
  * Cached Mongoose connection.
@@ -26,9 +27,7 @@ const cache: MongooseCache = globalThis.__admissionSathiMongoose ?? {
     lastFailureAt: 0,
 };
 
-if (!isProduction) {
-    globalThis.__admissionSathiMongoose = cache;
-}
+globalThis.__admissionSathiMongoose = cache;
 
 mongoose.set('strictQuery', true);
 // Reject unknown keys instead of silently dropping them -> protects against mass assignment.
@@ -39,6 +38,16 @@ if (!isProduction) {
 }
 
 export async function connectToDatabase(): Promise<Mongoose> {
+    try {
+        return await getConnection();
+    } catch (error) {
+        // Also covers callers that catch connection errors inside a cached loader.
+        markReadFailure();
+        throw error;
+    }
+}
+
+async function getConnection(): Promise<Mongoose> {
     if (cache.conn && cache.conn.connection.readyState === 1) {
         return cache.conn;
     }
@@ -47,7 +56,7 @@ export async function connectToDatabase(): Promise<Mongoose> {
     // page loads facets and results in parallel). After Atlas rejects one
     // connection attempt, fail those siblings immediately during a short
     // cooldown instead of opening a new 10-second handshake for each one.
-    if (cache.lastFailureAt && Date.now() - cache.lastFailureAt < 10_000) {
+    if (cache.lastFailureAt && Date.now() - cache.lastFailureAt < 1_000) {
         throw new Error('MongoDB is temporarily unavailable; retrying shortly.');
     }
 
@@ -58,15 +67,11 @@ export async function connectToDatabase(): Promise<Mongoose> {
         cache.promise = mongoose
             .connect(env.MONGODB_URI, {
                 dbName: env.MONGODB_DB_NAME,
-                maxPoolSize: isProduction ? 20 : 5,
-                /*
-                 * Keep sockets warm. With `minPoolSize: 0` the pool is reaped while
-                 * idle, so the first query after a pause pays a full TCP + TLS +
-                 * SCRAM handshake — measured at 1.5-2s against Atlas, which lands
-                 * squarely on a user's next navigation. `src/instrumentation.ts`
-                 * forces these connections open at startup so no request does.
-                 */
-                minPoolSize: isProduction ? 5 : 3,
+                maxPoolSize: isProduction ? 10 : 5,
+                // One warm socket per production instance. Five per instance can
+                // exhaust a shared Atlas tier as serverless instances scale out.
+                minPoolSize: isProduction ? 1 : 0,
+                maxIdleTimeMS: 60_000,
                 connectTimeoutMS: 6_000,
                 serverSelectionTimeoutMS: 6_000,
                 // Never let a saturated/unreachable pool hold a page request
@@ -96,21 +101,26 @@ export async function connectToDatabase(): Promise<Mongoose> {
                  * adding an index to a model, before running the migration script.
                  */
                 autoIndex: isTest || process.env.MONGOOSE_AUTO_INDEX === 'true',
+                autoCreate: isTest,
             })
             .then((m) => {
-                // Ensure all model files are registered once the connection is live.
+                cache.conn = m;
                 cache.lastFailureAt = 0;
                 return m;
             })
             .catch((error: unknown) => {
-                cache.promise = null;
+                cache.conn = null;
                 cache.lastFailureAt = Date.now();
                 throw error;
+            })
+            .finally(() => {
+                // Keep only in-flight work. Reusing a fulfilled promise after a
+                // disconnect used to return a dead connection without reconnecting.
+                cache.promise = null;
             });
     }
 
-    cache.conn = await cache.promise;
-    return cache.conn;
+    return cache.promise;
 }
 
 /** Used by scripts (seed / index migrations) to close cleanly. */

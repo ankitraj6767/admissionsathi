@@ -1,5 +1,5 @@
 import Image from 'next/image';
-import Link from 'next/link';
+import { IntentLink as Link } from '@/components/ui/intent-link';
 import { ArrowRight } from 'lucide-react';
 import { SearchBox } from '@/components/search/search-box';
 import { CounsellingForm } from '@/components/forms/counselling-form';

@@ -38,7 +38,7 @@ Production minimum:
 | Variable | Value |
 | --- | --- |
 | `MONGODB_URI` | Production Atlas cluster string, production DB user |
-| `MONGODB_DB_NAME` | `admission-sathi` |
+| `MONGODB_DB_NAME` | `admissionssathi` (existing content database) |
 | `AUTH_SECRET` | Fresh `openssl rand -base64 32` (do not reuse the development value) |
 | `AUTH_URL` | `https://your-domain.com` |
 | `NEXT_PUBLIC_SITE_URL` | `https://your-domain.com` — set it explicitly; see the note below |
@@ -97,7 +97,7 @@ The app connects with `autoIndex: false` in production, so indexes must be creat
 ```bash
 # from a machine allowlisted in Atlas, with production credentials in .env.local
 MONGODB_URI="mongodb+srv://as_migrate:…@cluster.mongodb.net/admission-sathi" \
-MONGODB_DB_NAME=admission-sathi \
+MONGODB_DB_NAME=admissionssathi \
 AUTH_SECRET="any-16-plus-char-placeholder" \
 npm run db:indexes
 ```

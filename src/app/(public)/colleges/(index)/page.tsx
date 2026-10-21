@@ -47,13 +47,12 @@ export default async function CollegesPage({
     searchParams: Promise<CollegeSearchParams>;
 }) {
     const params = await searchParams;
-    const [filters, filterGroups, facets] = await Promise.all([
-        resolveCollegeFilters(params),
+    const [result, filterGroups, facets] = await Promise.all([
+        resolveCollegeFilters(params).then(searchColleges),
         buildCollegeFilterGroups(),
         getCollegeFacets(),
     ]);
 
-    const result = await searchColleges(filters);
     const cards = result.items.map(toCollegeCard);
 
     return (

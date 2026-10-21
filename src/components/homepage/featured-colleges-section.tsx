@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { IntentLink as Link } from '@/components/ui/intent-link';
 import Image from 'next/image';
 import { ArrowRight, IndianRupee, MapPin, TrendingUp } from 'lucide-react';
 import { Badge, Card, RatingStars, SectionHeader } from '@/components/ui/primitives';

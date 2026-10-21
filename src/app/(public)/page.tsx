@@ -107,7 +107,11 @@ export default async function HomePage() {
     // Every loader below reads through the data cache, so a warm homepage costs
     // zero database round trips. Editor changes still appear immediately: each
     // loader is tagged and the admin actions already revalidate those tags.
-    const [categories, courseOptions, stateOptions, predictors, updates] = await Promise.all([
+    const [
+        categories, courseOptions, stateOptions, predictors, updates,
+        collegeRows, dateRows, scholarshipRows, reviewData, articleRows,
+        counsellorRows, faqRows, directoryGeo,
+    ] = await Promise.all([
         getHomeCategories({
             featuredOnly: topCourses.config.categorySlugs.length === 0,
             slugs: topCourses.config.categorySlugs.length ? topCourses.config.categorySlugs : undefined,
@@ -126,26 +130,7 @@ export default async function HomePage() {
             limit: trending.config.limit,
             categories: trending.config.categories,
         }),
-    ]);
-
-    /*
-     * Content for the sections below the fold.
-     *
-     * Each loader is skipped when its section is disabled, so turning a section off
-     * in the builder removes its query as well as its markup. All of them read
-     * through the tagged data cache, so a warm homepage still costs no database
-     * round trips no matter how many sections are enabled.
-     */
-    const [
-        collegeRows,
-        dateRows,
-        scholarshipRows,
-        reviewData,
-        articleRows,
-        counsellorRows,
-        faqRows,
-        directoryGeo,
-    ] = await Promise.all([
+        // Start below-the-fold reads in the same wave. Disabled sections do no IO.
         featuredColleges.isEnabled
             ? getHomeFeaturedColleges({
                 limit: featuredColleges.config.limit,

@@ -49,9 +49,11 @@ export function resolveExamFilters(params: ExamSearchParams): ExamListFilters {
     };
 }
 
-export async function searchExams(filters: ExamListFilters): Promise<Paginated<ExamDoc>> {
-    return toPlain(await listExams(filters));
-}
+export const searchExams = cached(
+    async (filters: ExamListFilters): Promise<Paginated<ExamDoc>> => toPlain(await listExams(filters)),
+    ['exam-search'],
+    { tags: [CACHE_TAGS.exams], revalidate: CACHE_TTL.short },
+);
 
 export const buildExamFilterGroups = cached(
     async (): Promise<FilterGroup[]> => [
