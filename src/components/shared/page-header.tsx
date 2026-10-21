@@ -76,7 +76,7 @@ export function PageHeader({
 
     return (
         <section
-            className={cn('relative isolate min-h-[150px] overflow-hidden border-b md:min-h-[184px]', dark ? 'border-navy-900 bg-navy-900 text-white' : 'border-line bg-white text-navy-800')}
+            className={cn('relative isolate min-h-[150px] overflow-hidden border-b border-white/30 md:min-h-[184px]', dark ? 'text-white' : 'text-navy-800')}
         >
             <Image
                 src={bannerVisual.src}
@@ -87,24 +87,17 @@ export function PageHeader({
                 sizes="100vw"
                 className={cn('object-cover', bannerVisual.objectPosition)}
             />
-            <div
-                aria-hidden
-                className={cn(
-                    'absolute inset-0',
-                    dark
-                        ? 'bg-gradient-to-r from-navy-900/95 via-navy-900/78 to-navy-900/20'
-                        : 'bg-gradient-to-r from-white/98 via-white/88 to-white/25',
-                )}
-            />
-            <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-black/10" />
-
             <div className="shell relative py-6 md:py-8">
                 {breadcrumbs?.length ? (
-                    <Breadcrumbs items={breadcrumbs} tone={dark ? 'dark' : 'light'} className="mb-3" />
+                    <Breadcrumbs
+                        items={breadcrumbs}
+                        tone={dark ? 'dark' : 'light'}
+                        className={cn('mb-3', dark ? 'banner-copy-on-image' : 'banner-copy-on-image-light')}
+                    />
                 ) : null}
 
                 <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
-                    <div className="min-w-0">
+                    <div className={cn('min-w-0', dark ? 'banner-copy-on-image' : 'banner-copy-on-image-light')}>
                         {eyebrow ? (
                             <p
                                 className={cn(

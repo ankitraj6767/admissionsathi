@@ -13,7 +13,7 @@ export function CollegeTabs({ base }: { base: string }) {
     const active = pathname.startsWith(base) ? pathname.slice(base.length).replace(/^\//, '') : '';
 
     return (
-        <nav aria-label="College sections" className="mt-5 -mb-6 overflow-x-auto no-scrollbar">
+        <nav aria-label="College sections" className="banner-copy-on-image mt-5 -mb-6 overflow-x-auto no-scrollbar">
             <ul className="flex min-w-max items-center gap-1 border-b border-white/10">
                 {COLLEGE_TABS.map((tab) => {
                     const href = tab.segment ? `${base}/${tab.segment}` : base;

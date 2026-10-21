@@ -141,18 +141,14 @@ export function CtaBanner({
     ctaUrl: string;
     tone?: 'navy' | 'orange' | 'teal';
 }) {
-    const overlays = {
-        navy: 'from-navy-900/95 via-navy-900/80 to-navy-900/25',
-        orange: 'from-orange-700/95 via-orange-700/78 to-orange-900/25',
-        teal: 'from-[#075a56]/95 via-[#075a56]/78 to-[#073b3a]/25',
-    } as const;
     const bannerVisual = resolvePageBannerVisual({ title, description });
 
     return (
         <section
             className={cn(
-                'relative isolate flex flex-col items-start justify-between gap-3 overflow-hidden rounded-panel border border-white/10 p-4 text-white shadow-card md:flex-row md:items-center md:p-5',
+                'relative isolate flex flex-col items-start justify-between gap-3 overflow-hidden rounded-panel border border-white/25 p-4 text-white shadow-card md:flex-row md:items-center md:p-5',
             )}
+            data-tone={tone}
         >
             <Image
                 src={bannerVisual.src}
@@ -162,8 +158,7 @@ export function CtaBanner({
                 sizes="(max-width: 768px) 100vw, 1320px"
                 className={cn('object-cover', bannerVisual.objectPosition)}
             />
-            <div aria-hidden className={cn('absolute inset-0 bg-gradient-to-r', overlays[tone])} />
-            <div className="relative z-10 max-w-3xl">
+            <div className="banner-copy-on-image relative z-10 max-w-3xl">
                 <h2 className="text-[15px] font-extrabold tracking-[-0.01em] md:text-[16px]">{title}</h2>
                 {description ? <p className="mt-1 text-[12.5px] leading-relaxed text-white/80">{description}</p> : null}
             </div>

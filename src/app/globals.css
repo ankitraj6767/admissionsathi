@@ -197,6 +197,15 @@
     padding-inline: 16px;
   }
 
+  /* Keep photo banners untinted while preserving legible copy above the image. */
+  .banner-copy-on-image {
+    text-shadow: 0 1px 3px rgb(0 0 0 / 0.72), 0 3px 14px rgb(0 0 0 / 0.55);
+  }
+
+  .banner-copy-on-image-light {
+    text-shadow: 0 1px 3px rgb(255 255 255 / 0.95), 0 2px 12px rgb(255 255 255 / 0.8);
+  }
+
   @media (min-width: 768px) {
     .shell {
       padding-inline: 24px;

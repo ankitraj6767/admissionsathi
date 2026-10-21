@@ -21,15 +21,13 @@ export function CollegeHero({ college }: { college: CollegeDoc }) {
     const websiteHref = safeWebUrl(college.contact?.website);
 
     return (
-        <section className="relative isolate overflow-hidden border-b border-navy-900 bg-navy-900 text-white">
+        <section className="relative isolate overflow-hidden border-b border-white/30 text-white">
             <Image src={banner} alt="" fill priority quality={75} sizes="100vw" className="object-cover object-[72%_32%] md:object-[center_28%]" />
-            <div aria-hidden className="absolute inset-0 bg-gradient-to-r from-navy-900/90 via-navy-900/72 to-navy-900/25" />
-            <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-navy-900/55 via-transparent to-navy-900/10" />
 
             <div className="relative shell py-6">
                 <Breadcrumbs
                     tone="dark"
-                    className="mb-4"
+                    className="banner-copy-on-image mb-4"
                     items={[
                         { label: 'Home', href: '/' },
                         { label: 'Colleges', href: '/colleges' },
@@ -50,7 +48,7 @@ export function CollegeHero({ college }: { college: CollegeDoc }) {
                             />
                         </span>
 
-                        <div className="min-w-0">
+                        <div className="banner-copy-on-image min-w-0">
                             <h1 className="font-display text-[22px] font-extrabold leading-tight text-white md:text-[26px]">
                                 {college.name}
                             </h1>
