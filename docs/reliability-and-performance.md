@@ -42,7 +42,10 @@ The connection cache is shared in production as well as development, retains onl
 an in-flight promise, and retries after a one-second failure cooldown. Production
 pools keep one warm socket instead of five and allow ten sockets per instance.
 Idle sockets can expire after a minute. Startup warms one socket and reports ping
-failures accurately. Model collection/index creation remains explicit outside tests.
+failures accurately on a persistent local server. Vercel defers connection creation
+until an actual database read: production startup logs showed eager warmup taking
+2–7 seconds, including on routes that could otherwise use cached data. Model
+collection/index creation remains explicit outside tests.
 
 Public college, course, exam, article, and news listings have a 60-second tagged
 cache. Additional public detail loaders are cached too. Filter arguments remain
@@ -59,7 +62,7 @@ touch, rather than speculatively requesting every visible destination at once.
 
 ## Verification
 
-- 500 unit tests, including connection lifecycle, database selection, cache failure
+- 503 unit tests, including serverless startup, connection lifecycle, database selection, cache failure
   isolation, concurrent fills, and successful empty collections.
 - 385 integration tests against isolated real MongoDB instances, including an
   unexpected disconnect followed by a successful read of an existing document.

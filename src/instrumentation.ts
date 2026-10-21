@@ -25,6 +25,15 @@ export async function register(): Promise<void> {
     // The proxy/edge runtime cannot open a Mongo socket, and has no need to.
     if (process.env.NEXT_RUNTIME !== 'nodejs') return;
 
+    // A Vercel cold start runs on a visitor's request. Eagerly connecting here
+    // made even data-cache hits wait 2–7 seconds and opened unnecessary pools in
+    // analytics/static functions. Only a real database read should open a pool.
+    if (process.env.VERCEL === '1') {
+        // Populate paths still need their schemas registered on every instance.
+        await import('@/db/models');
+        return;
+    }
+
     // Imported lazily so the module graph of the edge runtime stays untouched.
     const { logger } = await import('@/lib/logger');
     const started = Date.now();
