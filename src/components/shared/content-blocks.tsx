@@ -155,9 +155,9 @@ export function CtaBanner({
                 sizes="(max-width: 768px) 100vw, 1320px"
                 className={cn('object-cover', bannerVisual.objectPosition)}
             />
-            <div className="banner-copy-on-image relative z-10 max-w-3xl">
-                <h2 className="text-[15px] font-extrabold tracking-[-0.01em] md:text-[16px]">{title}</h2>
-                {description ? <p className="mt-1 text-[12.5px] leading-relaxed text-white/80">{description}</p> : null}
+            <div className="banner-copy-panel relative z-10 max-w-3xl">
+                <h2 className="text-[15px] font-extrabold tracking-[-0.01em] text-[#142b3e] md:text-[16px]">{title}</h2>
+                {description ? <p className="mt-1 text-[12.5px] font-medium leading-relaxed text-[#334b5f]">{description}</p> : null}
             </div>
             <Link
                 href={ctaUrl}

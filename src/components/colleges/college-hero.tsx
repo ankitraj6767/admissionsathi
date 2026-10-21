@@ -22,13 +22,13 @@ export function CollegeHero({ college }: { college: CollegeDoc }) {
     const websiteHref = safeWebUrl(college.contact?.website);
 
     return (
-        <section className="relative isolate overflow-hidden border-b border-white/30 text-[#17324b] lg:flex lg:min-h-[542px] lg:flex-col">
+        <section className="relative isolate overflow-hidden border-b border-white/30 text-[#142b3e] lg:flex lg:min-h-[542px] lg:flex-col">
             <PageBannerImage src={banner} priority sizes="100vw" className="object-[72%_32%] md:object-[center_28%]" />
 
             <div className="relative shell py-6 lg:flex lg:flex-1 lg:flex-col lg:justify-end">
                 <Breadcrumbs
                     tone="light"
-                    className="banner-copy-on-photo mb-4"
+                    className="banner-breadcrumb-panel banner-breadcrumbs-on-photo mb-4"
                     items={[
                         { label: 'Home', href: '/' },
                         { label: 'Colleges', href: '/colleges' },
@@ -38,8 +38,8 @@ export function CollegeHero({ college }: { college: CollegeDoc }) {
                 />
 
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="flex min-w-0 gap-4">
-                        <span className="inline-flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-white/15 bg-white">
+                    <div className="banner-copy-panel flex min-w-0 gap-4">
+                        <span className="inline-flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-[#e8e0d5] bg-white">
                             <Image
                                 src={college.logo?.url ?? '/brand/college-placeholder.svg'}
                                 alt=""
@@ -50,11 +50,11 @@ export function CollegeHero({ college }: { college: CollegeDoc }) {
                         </span>
 
                         <div className="banner-copy-on-photo min-w-0">
-                            <h1 className="font-display text-[22px] font-extrabold leading-tight text-[#17324b] md:text-[26px]">
+                            <h1 className="font-display text-[22px] font-extrabold leading-tight text-[#142b3e] md:text-[26px]">
                                 {college.name}
                             </h1>
 
-                            <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-[#30485f]">
+                            <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] font-medium text-[#334b5f]">
                                 <span className="inline-flex items-center gap-1">
                                     <MapPin className="h-3.5 w-3.5 text-orange-700" aria-hidden />
                                     {college.cityName}, {college.stateName}
@@ -78,7 +78,7 @@ export function CollegeHero({ college }: { college: CollegeDoc }) {
                             </p>
 
                             <div className="mt-3 flex flex-wrap items-center gap-2">
-                                <span className="inline-flex items-center gap-1 rounded-pill bg-white/85 px-2 py-1">
+                                <span className="inline-flex items-center gap-1 rounded-pill border border-[#e8e0d5] bg-[#fffdf7] px-2 py-1">
                                     <RatingStars value={college.rating?.overall ?? 0} count={college.rating?.count} />
                                 </span>
                                 {college.ranking?.nirfOverall ? (
@@ -87,7 +87,7 @@ export function CollegeHero({ college }: { college: CollegeDoc }) {
                                 {college.accreditation?.slice(0, 2).map((item) => (
                                     <span
                                         key={item}
-                                        className="inline-flex items-center gap-1 rounded-pill border border-white/80 bg-white/75 px-2 py-0.5 text-[10.5px] font-bold text-[#17324b]"
+                                        className="inline-flex items-center gap-1 rounded-pill border border-[#e8e0d5] bg-[#fffdf7] px-2 py-0.5 text-[10.5px] font-bold text-[#142b3e]"
                                     >
                                         <Award className="h-3 w-3 text-green" aria-hidden />
                                         {item}
@@ -96,7 +96,7 @@ export function CollegeHero({ college }: { college: CollegeDoc }) {
                                 {college.approvals?.slice(0, 3).map((item) => (
                                     <span
                                         key={item}
-                                        className="rounded-pill border border-white/80 bg-white/75 px-2 py-0.5 text-[10.5px] font-bold text-[#17324b]"
+                                        className="rounded-pill border border-[#e8e0d5] bg-[#fffdf7] px-2 py-0.5 text-[10.5px] font-bold text-[#142b3e]"
                                     >
                                         {item}
                                     </span>
@@ -105,14 +105,14 @@ export function CollegeHero({ college }: { college: CollegeDoc }) {
                         </div>
                     </div>
 
-                    <div className="shrink-0 rounded-panel border border-white/85 bg-white/92 p-3 text-[#17324b] shadow-card backdrop-blur-[2px]">
+                    <div className="shrink-0 rounded-panel border border-[#e8e0d5] bg-[#fffdf7] p-3 text-[#142b3e] shadow-card">
                         <dl className="grid grid-cols-2 gap-x-5 gap-y-2">
                             <div>
-                                <dt className="text-[10px] uppercase tracking-wide text-[#526779]">Fee (from)</dt>
+                                <dt className="text-[10px] font-semibold uppercase tracking-wide text-[#536779]">Fee (from)</dt>
                                 <dd className="text-[14px] font-extrabold">{formatCompactINR(college.feeRange?.min)}</dd>
                             </div>
                             <div>
-                                    <dt className="text-[10px] uppercase tracking-wide text-[#526779]">Avg. package</dt>
+                                    <dt className="text-[10px] font-semibold uppercase tracking-wide text-[#536779]">Avg. package</dt>
                                 <dd className="text-[14px] font-extrabold">
                                     {formatCompactINR(college.placement?.averagePackage)}
                                 </dd>
@@ -122,7 +122,7 @@ export function CollegeHero({ college }: { college: CollegeDoc }) {
                         <div className="mt-3 flex flex-wrap gap-2">
                             <Link
                                 href={`/book-counselling?college=${college.slug}`}
-                                className="inline-flex h-9 items-center rounded-[9px] bg-orange px-3.5 text-[12px] font-bold text-[#17324b] hover:bg-orange-600"
+                                className="inline-flex h-9 items-center rounded-[9px] bg-orange px-3.5 text-[12px] font-bold text-[#142b3e] hover:bg-orange-600"
                             >
                                 Apply / Get guidance
                             </Link>
@@ -135,7 +135,7 @@ export function CollegeHero({ college }: { college: CollegeDoc }) {
                             <SafeLink
                                 href={college.brochureUrl}
                                 showIcon={false}
-                                className="h-9 rounded-[9px] border border-slate-300 px-3 text-[12px] font-bold text-[#17324b] hover:bg-slate-100"
+                                className="h-9 rounded-[9px] border border-[#d5dce2] px-3 text-[12px] font-bold text-[#142b3e] hover:bg-[#f4f1ea]"
                                 data-analytics="brochure_download"
                             >
                                 <Download className="h-3.5 w-3.5" aria-hidden />
@@ -147,7 +147,7 @@ export function CollegeHero({ college }: { college: CollegeDoc }) {
                                 <SafeLink
                                     href={websiteHref}
                                     showIcon={false}
-                                    className="h-9 rounded-[9px] border border-slate-300 px-3 text-[12px] font-bold text-[#17324b] hover:bg-slate-100"
+                                    className="h-9 rounded-[9px] border border-[#d5dce2] px-3 text-[12px] font-bold text-[#142b3e] hover:bg-[#f4f1ea]"
                                 >
                                     <Globe className="h-3.5 w-3.5" aria-hidden />
                                     Official website
@@ -161,7 +161,7 @@ export function CollegeHero({ college }: { college: CollegeDoc }) {
                                 slug={college.slug}
                                 name={college.name}
                                 id={String(college._id)}
-                                className="[&_button]:border-slate-300 [&_button]:bg-white [&_button]:text-[#17324b]"
+                                className="[&_button]:border-[#d5dce2] [&_button]:bg-white [&_button]:text-[#142b3e]"
                             />
                         </div>
                     </div>

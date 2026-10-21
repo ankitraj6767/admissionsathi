@@ -14,7 +14,7 @@ export function CollegeTabs({ base }: { base: string }) {
 
     return (
         <nav aria-label="College sections" className="mt-5 -mb-6 overflow-x-auto no-scrollbar">
-            <ul className="flex min-w-max items-center gap-1 border-b border-white/10">
+            <ul className="flex min-w-max items-center gap-1 border-b border-[#fffdf7]/90">
                 {COLLEGE_TABS.map((tab) => {
                     const href = tab.segment ? `${base}/${tab.segment}` : base;
                     const isActive = active === tab.segment;
@@ -23,7 +23,7 @@ export function CollegeTabs({ base }: { base: string }) {
                             <Link
                                 href={href}
                                 aria-current={isActive ? 'page' : undefined}
-                                className={`inline-flex h-11 items-center whitespace-nowrap rounded-t-[8px] border-b-2 px-3 text-[12.5px] font-semibold transition-colors ${isActive ? 'border-orange bg-orange text-[#17324b]' : 'border-transparent bg-white/75 text-[#17324b] hover:bg-white'
+                                className={`inline-flex h-11 items-center whitespace-nowrap rounded-t-[8px] border-b-2 px-3 text-[12.5px] font-semibold text-[#142b3e] transition-colors ${isActive ? 'border-orange bg-orange' : 'border-transparent bg-[#fffdf7] hover:bg-white'
                                     }`}
                             >
                                 {tab.label}

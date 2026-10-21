@@ -198,41 +198,89 @@
   }
 
   /* Keep photo banners untinted while preserving legible copy above the image. */
-  .banner-copy-on-image {
-    text-shadow: 0 1px 3px rgb(0 0 0 / 0.72), 0 3px 14px rgb(0 0 0 / 0.55);
-  }
-
   .banner-copy-on-image-light {
-    text-shadow: 0 1px 3px rgb(255 255 255 / 0.95), 0 2px 12px rgb(255 255 255 / 0.8);
+    text-shadow: none;
   }
 
-  /* Main photo heroes use dark ink with a soft light halo instead of white copy. */
+  /* Give photo-banner copy its own warm, quiet surface so contrast stays steady
+     across bright skies, foliage, and dark parts of the photograph. */
+  .banner-copy-panel {
+    width: fit-content;
+    max-width: 100%;
+    padding: 11px 13px;
+    border: 1px solid rgb(255 255 255 / 0.88);
+    border-radius: 15px;
+    background: rgb(255 252 245 / 0.97);
+    box-shadow: 0 10px 28px rgb(15 34 51 / 0.16);
+    -webkit-backdrop-filter: blur(5px);
+    backdrop-filter: blur(5px);
+  }
+
+  @media (min-width: 768px) {
+    .banner-copy-panel {
+      padding: 14px 17px;
+      border-radius: 17px;
+    }
+  }
+
+  .banner-breadcrumbs-on-photo {
+    text-shadow: none;
+  }
+
+  .banner-breadcrumb-panel {
+    width: fit-content;
+    max-width: 100%;
+    padding: 6px 11px;
+    border: 1px solid rgb(255 255 255 / 0.9);
+    border-radius: 999px;
+    background: rgb(255 252 245 / 0.97);
+    box-shadow: 0 5px 14px rgb(15 34 51 / 0.12);
+    -webkit-backdrop-filter: blur(5px);
+    backdrop-filter: blur(5px);
+  }
+
+  .banner-breadcrumbs-on-photo a {
+    color: #536779 !important;
+    text-shadow: none;
+  }
+
+  .banner-breadcrumbs-on-photo li > span {
+    color: #142b3e !important;
+    text-shadow: none;
+  }
+
+  .banner-breadcrumbs-on-photo svg {
+    color: #8b9aa7 !important;
+  }
+
+  /* Never use a glow for primary copy: it softens glyph edges and is unreliable
+     against photos. Main titles and descriptions stay crisp on the ivory panel. */
   .banner-copy-on-photo {
-    color: #17324b;
-    text-shadow: 0 1px 0 rgb(255 255 255 / 0.92), 0 2px 10px rgb(255 255 255 / 0.8);
+    color: #142b3e;
+    text-shadow: none;
   }
 
   .banner-nav-on-photo a[class*="bg-white/10"] {
-    color: #17324b !important;
-    background-color: rgb(255 255 255 / 0.88) !important;
-    border-color: rgb(255 255 255 / 0.96) !important;
+    color: #142b3e !important;
+    background-color: rgb(255 252 245 / 0.98) !important;
+    border-color: rgb(226 218 205 / 0.95) !important;
     text-shadow: none;
   }
 
   .banner-nav-on-photo a[class*="bg-orange"] {
-    color: #17324b !important;
+    color: #142b3e !important;
     text-shadow: none;
   }
 
   .banner-actions-on-photo :is(a, button):not([class*="bg-orange"]):not([class*="bg-navy"]) {
-    color: #17324b !important;
-    background-color: rgb(255 255 255 / 0.94) !important;
-    border-color: rgb(255 255 255 / 0.96) !important;
+    color: #142b3e !important;
+    background-color: rgb(255 252 245 / 0.98) !important;
+    border-color: rgb(226 218 205 / 0.95) !important;
     text-shadow: none;
   }
 
   .banner-actions-on-photo :is(a, button)[class*="bg-orange"] {
-    color: #17324b !important;
+    color: #142b3e !important;
     text-shadow: none;
   }
 
