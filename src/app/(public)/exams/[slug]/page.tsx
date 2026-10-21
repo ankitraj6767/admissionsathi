@@ -12,7 +12,7 @@ import {
 } from '@/components/shared/content-blocks';
 import { Badge } from '@/components/ui/primitives';
 import { getExamDetail } from '@/services/exam.service';
-import { incrementViewCount } from '@/services/analytics.service';
+import { ViewCountTracker } from '@/components/analytics/view-count-tracker';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { buildMetadata } from '@/lib/seo/metadata';
 import {
@@ -48,7 +48,6 @@ export default async function ExamDetailPage({ params }: { params: Promise<{ slu
     if (!detail) notFound();
 
     const { exam, dates, colleges, papers, articles, predictors } = detail;
-    void incrementViewCount('exam', String(exam._id));
 
     const keyDates = dates.filter((d) => d.isKeyDate).slice(0, 6);
     const faqJson = buildFaqJsonLd((exam.faqs ?? []).map((f) => ({ question: f.question, answer: f.answer })));
@@ -63,6 +62,7 @@ export default async function ExamDetailPage({ params }: { params: Promise<{ slu
 
     return (
         <>
+            <ViewCountTracker entity="exam" id={String(exam._id)} slug={exam.slug} />
             <JsonLd
                 data={[
                     buildBreadcrumbJsonLd([

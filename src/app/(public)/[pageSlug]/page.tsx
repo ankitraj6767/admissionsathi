@@ -10,16 +10,16 @@ import { JsonLd, buildBreadcrumbJsonLd } from '@/lib/seo/json-ld';
 import { formatDate, truncate } from '@/lib/utils';
 
 /**
- * Rendered per request, not prerendered.
- *
- * The shared public layout reads the session (`getCurrentActor()` → cookies), so
- * this route cannot be statically generated: combining `revalidate` with
- * `generateStaticParams()` here made every slug that was not prerendered fail
- * with `DYNAMIC_SERVER_USAGE` instead of resolving. Page content is still cached
- * — `getPublishedPage()` is wrapped in `cached()` under the `pages` tag, which
- * the admin invalidates on publish — so the database is not hit per request.
+ * Public pages are cached as they are visited and refreshed after five minutes.
+ * The shared public layout resolves the signed-in menu on the client, so this
+ * content route can use the same server cache as the other public pages.
  */
-export const dynamic = 'force-dynamic';
+export const revalidate = 300;
+
+export async function generateStaticParams() {
+    const pages = await listPublishedPageLinks();
+    return pages.map(({ slug }) => ({ pageSlug: slug }));
+}
 
 export async function generateMetadata({
     params,

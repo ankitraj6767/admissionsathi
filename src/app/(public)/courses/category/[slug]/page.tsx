@@ -6,11 +6,17 @@ import { CourseCard, toCourseCard } from '@/components/courses/course-card';
 import { CtaBanner, SectionCard } from '@/components/shared/content-blocks';
 import { EmptyState } from '@/components/ui/primitives';
 import { getCategoryDetail } from '@/services/course.service';
+import { listCourseCategorySitemapSlugs } from '@/db/repositories/course.repository';
 import { searchColleges } from '@/services/college.service';
 import { buildMetadata } from '@/lib/seo/metadata';
 import { JsonLd, buildBreadcrumbJsonLd, buildItemListJsonLd } from '@/lib/seo/json-ld';
 
 export const revalidate = 900;
+
+export async function generateStaticParams() {
+    const categories = await listCourseCategorySitemapSlugs(100);
+    return categories.map(({ slug }) => ({ slug }));
+}
 
 export async function generateMetadata({
     params,

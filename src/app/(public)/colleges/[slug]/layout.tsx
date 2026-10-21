@@ -4,7 +4,8 @@ import type { Metadata } from 'next';
 import { CollegeHero } from '@/components/colleges/college-hero';
 import { CardSkeleton, Skeleton } from '@/components/ui/primitives';
 import { getCollegeDetail } from '@/services/college.service';
-import { incrementViewCount } from '@/services/analytics.service';
+import { listCollegeSitemapSlugs } from '@/db/repositories/college.repository';
+import { ViewCountTracker } from '@/components/analytics/view-count-tracker';
 import { buildMetadata } from '@/lib/seo/metadata';
 import { JsonLd, buildBreadcrumbJsonLd, buildCollegeJsonLd, buildFaqJsonLd } from '@/lib/seo/json-ld';
 import { getSettings, readString } from '@/services/settings.service';
@@ -31,6 +32,13 @@ function CollegeTabFallback() {
 }
 
 export const revalidate = 600;
+
+export async function generateStaticParams() {
+    // This layout owns ten tab pages per college. Pre-render the most recently
+    // updated 120; less frequently visited slugs are still generated on demand.
+    const colleges = await listCollegeSitemapSlugs(120);
+    return colleges.map(({ slug }) => ({ slug }));
+}
 
 export async function generateMetadata({
     params,
@@ -65,7 +73,6 @@ export default async function CollegeLayout({ children, params }: LayoutProps) {
     if ('redirectTo' in detail) redirect(`/colleges/${detail.redirectTo}`);
 
     const { college } = detail;
-    void incrementViewCount('college', String(college._id));
 
     const faqJson = buildFaqJsonLd(
         (college.faqs ?? []).map((f) => ({ question: f.question, answer: f.answer })),
@@ -73,6 +80,7 @@ export default async function CollegeLayout({ children, params }: LayoutProps) {
 
     return (
         <>
+            <ViewCountTracker entity="college" id={String(college._id)} slug={college.slug} />
             <JsonLd
                 data={[
                     buildCollegeJsonLd({

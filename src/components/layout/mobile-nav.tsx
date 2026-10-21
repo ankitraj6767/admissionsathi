@@ -9,7 +9,7 @@ import { Icon } from '@/components/ui/icon';
 import { Button } from '@/components/ui/button';
 import { Portal } from '@/components/ui/portal';
 import { BrandLogo } from './brand-logo';
-import type { NavNode } from '@/services/navigation.service';
+import type { NavNode } from '@/types/navigation';
 import type { BrandingConfig } from '@/lib/branding';
 
 /** Mobile drawer navigation with accordion sub-menus and a locked body scroll. */
@@ -18,26 +18,27 @@ export function MobileNav({
     phone,
     isAuthenticated,
     isStaff,
+    isSessionLoading,
     branding,
 }: {
     items: NavNode[];
     phone?: string;
     isAuthenticated: boolean;
     isStaff: boolean;
+    isSessionLoading: boolean;
     branding: BrandingConfig;
 }) {
-    const [open, setOpen] = useState(false);
+    const [openForPath, setOpenForPath] = useState<string | null>(null);
     const [expanded, setExpanded] = useState<string | null>(null);
     const pathname = usePathname();
-
-    useEffect(() => setOpen(false), [pathname]);
+    const open = openForPath === pathname;
 
     useEffect(() => {
         if (!open) return;
         const previous = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
         const onKey = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') setOpen(false);
+            if (e.key === 'Escape') setOpenForPath(null);
         };
         document.addEventListener('keydown', onKey);
         return () => {
@@ -50,7 +51,7 @@ export function MobileNav({
         <>
             <button
                 type="button"
-                onClick={() => setOpen(true)}
+                onClick={() => setOpenForPath(pathname)}
                 aria-label="Open menu"
                 aria-expanded={open}
                 className="inline-flex h-11 w-11 items-center justify-center rounded-[10px] border border-line bg-white text-navy-700 xl:hidden"
@@ -71,7 +72,7 @@ export function MobileNav({
                         <button
                             type="button"
                             aria-label="Close menu"
-                            onClick={() => setOpen(false)}
+                            onClick={() => setOpenForPath(null)}
                             className="absolute inset-0 bg-navy-900/45 backdrop-blur-[2px]"
                         />
                         <div
@@ -84,7 +85,7 @@ export function MobileNav({
                                 <BrandLogo showTagline={false} branding={branding} />
                                 <button
                                     type="button"
-                                    onClick={() => setOpen(false)}
+                                    onClick={() => setOpenForPath(null)}
                                     aria-label="Close menu"
                                     className="inline-flex h-10 w-10 items-center justify-center rounded-[10px] border border-line text-ink"
                                 >
@@ -167,18 +168,24 @@ export function MobileNav({
                                             </Link>
                                         </Button>
                                     ) : null}
-                                    <Button asChild variant="outline" full size="md">
-                                        <Link href={isAuthenticated ? '/dashboard' : '/login'}>
-                                            {isAuthenticated ? (
-                                                <>
-                                                    <Icon name="LayoutDashboard" className="h-4 w-4" />
-                                                    {isStaff ? 'User Dashboard' : 'My Dashboard'}
-                                                </>
-                                            ) : (
-                                                'Login / Sign up'
-                                            )}
-                                        </Link>
-                                    </Button>
+                                    {isSessionLoading ? (
+                                        <div className="flex min-h-[44px] w-full items-center justify-center rounded-[10px] border border-line">
+                                            <span className="h-4 w-24 animate-pulse rounded bg-muted" aria-hidden />
+                                        </div>
+                                    ) : (
+                                        <Button asChild variant="outline" full size="md">
+                                            <Link href={isAuthenticated ? '/dashboard' : '/login'}>
+                                                {isAuthenticated ? (
+                                                    <>
+                                                        <Icon name="LayoutDashboard" className="h-4 w-4" />
+                                                        {isStaff ? 'User Dashboard' : 'My Dashboard'}
+                                                    </>
+                                                ) : (
+                                                    'Login / Sign up'
+                                                )}
+                                            </Link>
+                                        </Button>
+                                    )}
                                     {phone ? (
                                         <a
                                             href={`tel:${phone.replace(/\s/g, '')}`}

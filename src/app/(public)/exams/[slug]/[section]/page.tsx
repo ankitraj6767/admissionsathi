@@ -21,6 +21,10 @@ export const revalidate = 600;
 
 const VALID: string[] = [...EXAM_SECTION_SEGMENTS];
 
+export function generateStaticParams() {
+    return [...EXAM_SECTION_SEGMENTS].map((section) => ({ section }));
+}
+
 const SECTION_META: Record<string, { title: string; description: string }> = {
     dates: { title: 'Important dates', description: 'Registration, admit card, exam, result and counselling schedule.' },
     eligibility: { title: 'Eligibility', description: 'Qualification, age and subject requirements.' },

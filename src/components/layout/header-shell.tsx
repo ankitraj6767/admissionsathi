@@ -5,8 +5,8 @@ import { cn } from '@/lib/utils';
 
 /**
  * Adds the "scrolled" treatment (compact height + stronger shadow) once the user
- * scrolls past the utility bar. Kept as a tiny client wrapper so the header
- * content itself stays a Server Component.
+ * scrolls past the utility bar. Kept as a tiny client wrapper so the public
+ * settings and navigation data can still be resolved on the server.
  */
 export function HeaderShell({ children }: { children: React.ReactNode }) {
     const [scrolled, setScrolled] = useState(false);

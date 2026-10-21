@@ -10,10 +10,10 @@ import {
     RichText,
     SectionCard,
 } from '@/components/shared/content-blocks';
-import { Badge, IconTile } from '@/components/ui/primitives';
+import { Badge } from '@/components/ui/primitives';
 import { CourseCard, toCourseCard } from '@/components/courses/course-card';
 import { getCourseDetail } from '@/services/course.service';
-import { incrementViewCount } from '@/services/analytics.service';
+import { ViewCountTracker } from '@/components/analytics/view-count-tracker';
 import { formatCompactINR, formatCurrency } from '@/lib/utils';
 import { buildMetadata } from '@/lib/seo/metadata';
 import { JsonLd, buildBreadcrumbJsonLd, buildCourseJsonLd, buildFaqJsonLd } from '@/lib/seo/json-ld';
@@ -48,7 +48,6 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ s
     if ('redirectTo' in detail) redirect(`/courses/${detail.redirectTo}`);
 
     const { course, specializations, colleges, related, articles } = detail;
-    void incrementViewCount('course', String(course._id));
 
     const exams = (course.entranceExams ?? []) as unknown as {
         _id: string;
@@ -71,6 +70,7 @@ export default async function CourseDetailPage({ params }: { params: Promise<{ s
 
     return (
         <>
+            <ViewCountTracker entity="course" id={String(course._id)} slug={course.slug} />
             <JsonLd
                 data={[
                     buildCourseJsonLd({

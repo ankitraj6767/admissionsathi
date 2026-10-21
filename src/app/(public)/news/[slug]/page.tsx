@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { PageHeader } from '@/components/shared/page-header';
 import { CtaBanner, RichText, SectionCard } from '@/components/shared/content-blocks';
 import { Badge } from '@/components/ui/primitives';
-import { getNewsBySlug, listTrendingUpdates } from '@/db/repositories/content.repository';
+import { getNewsBySlug, listNewsSitemapSlugs, listTrendingUpdates } from '@/db/repositories/content.repository';
 import { toPlain } from '@/db/repositories/base.repository';
 import { TRENDING_CATEGORY_LABELS, type TrendingCategory } from '@/config/constants';
 import { formatDate } from '@/lib/utils';
@@ -12,6 +12,11 @@ import { buildMetadata } from '@/lib/seo/metadata';
 import { JsonLd, buildArticleJsonLd, buildBreadcrumbJsonLd } from '@/lib/seo/json-ld';
 
 export const revalidate = 300;
+
+export async function generateStaticParams() {
+    const posts = await listNewsSitemapSlugs(500);
+    return posts.map(({ slug }) => ({ slug }));
+}
 
 export async function generateMetadata({
     params,

@@ -66,8 +66,11 @@ const firstParty: AnalyticsAdapter = {
             referrer: document.referrer || undefined,
         });
 
-        if (navigator.sendBeacon) {
-            navigator.sendBeacon('/api/analytics/collect', new Blob([body], { type: 'application/json' }));
+        const accepted = navigator.sendBeacon?.(
+            '/api/analytics/collect',
+            new Blob([body], { type: 'application/json' }),
+        );
+        if (accepted) {
             return;
         }
         void fetch('/api/analytics/collect', {
@@ -139,6 +142,28 @@ function enabledProviders(): AnalyticsAdapter[] {
 export function track(payload: AnalyticsPayload): void {
     if (typeof window === 'undefined') return;
     for (const adapter of enabledProviders()) {
+        try {
+            if (adapter.isReady()) adapter.track(payload);
+        } catch {
+            /* analytics must never break the UI */
+        }
+    }
+}
+
+/**
+ * Sends a content view to first-party analytics even when optional ad/analytics
+ * providers are the only providers enabled. Detail-page view counters depend on
+ * this first-party event.
+ */
+export function trackContentView(payload: AnalyticsPayload): void {
+    if (typeof window === 'undefined') return;
+    try {
+        firstParty.track(payload);
+    } catch {
+        /* storage or browser privacy settings must not break navigation */
+    }
+    for (const adapter of enabledProviders()) {
+        if (adapter.id === 'first-party') continue;
         try {
             if (adapter.isReady()) adapter.track(payload);
         } catch {

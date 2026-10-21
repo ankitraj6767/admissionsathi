@@ -14,23 +14,9 @@ import {
 import { CACHE_TAGS, CACHE_TTL, cached } from '@/lib/cache';
 import { logger } from '@/lib/logger';
 import { FALLBACK_MENUS } from '@/config/navigation-fallback';
-
-export interface NavNode {
-    id: string;
-    label: string;
-    url: string;
-    icon?: string;
-    description?: string;
-    itemType: 'link' | 'dropdown' | 'mega' | 'heading' | 'button';
-    columnGroup?: string;
-    badge?: string;
-    isNew: boolean;
-    isFeatured: boolean;
-    openInNewTab: boolean;
-    visibility: 'public' | 'authenticated' | 'guest' | 'staff';
-    requiredPermission?: string;
-    children: NavNode[];
-}
+import type { NavNode } from '@/types/navigation';
+export { filterNavForViewer } from '@/types/navigation';
+export type { NavNode } from '@/types/navigation';
 
 function toNode(item: NavigationItemDoc): NavNode {
     return {
@@ -90,26 +76,6 @@ const loadMenu = cached(
 );
 
 export const getMenu = cache(async (menuKey: string): Promise<NavNode[]> => loadMenu(menuKey));
-
-/** Filters nodes the current visitor should not see. */
-export function filterNavForViewer(
-    nodes: NavNode[],
-    viewer: { isAuthenticated: boolean; isStaff: boolean; permissions: string[] },
-): NavNode[] {
-    const allowed = (node: NavNode): boolean => {
-        if (node.visibility === 'authenticated' && !viewer.isAuthenticated) return false;
-        if (node.visibility === 'guest' && viewer.isAuthenticated) return false;
-        if (node.visibility === 'staff' && !viewer.isStaff) return false;
-        if (node.requiredPermission && !viewer.permissions.includes(node.requiredPermission)) {
-            return false;
-        }
-        return true;
-    };
-
-    return nodes
-        .filter(allowed)
-        .map((node) => ({ ...node, children: filterNavForViewer(node.children, viewer) }));
-}
 
 /* ------------------------------- admin writes ----------------------------- */
 

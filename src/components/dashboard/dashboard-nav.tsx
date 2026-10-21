@@ -1,9 +1,9 @@
 'use client';
 
-import Link from 'next/link';
+import { signOut } from 'next-auth/react';
 import { usePathname } from 'next/navigation';
 import { Icon } from '@/components/ui/icon';
-import { signOutAction } from '@/actions/auth.actions';
+import { IntentLink as Link } from '@/components/ui/intent-link';
 import { cn } from '@/lib/utils';
 
 const LINKS = [
@@ -46,15 +46,16 @@ export function DashboardNav() {
                     })}
                 </ul>
 
-                <form action={signOutAction} className="mt-1 hidden border-t border-line pt-1 lg:block">
+                <div className="mt-1 hidden border-t border-line pt-1 lg:block">
                     <button
-                        type="submit"
+                        type="button"
+                        onClick={() => void signOut({ redirectTo: '/' })}
                         className="flex min-h-[40px] w-full items-center gap-2 rounded-[10px] px-3 text-[12.5px] font-semibold text-red-alert hover:bg-red-50"
                     >
                         <Icon name="LogOut" className="h-4 w-4" />
                         Sign out
                     </button>
-                </form>
+                </div>
             </nav>
         </aside>
     );

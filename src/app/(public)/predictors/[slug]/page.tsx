@@ -5,11 +5,17 @@ import { PageHeader } from '@/components/shared/page-header';
 import { FaqAccordion, SectionCard } from '@/components/shared/content-blocks';
 import { PredictorRunner } from '@/components/predictors/predictor-runner';
 import { getPredictor, getPredictorList, getPredictorOptions } from '@/services/predictor.service';
+import { listPredictorSitemapSlugs } from '@/db/repositories/predictor.repository';
 import { getSettings, readString } from '@/services/settings.service';
 import { buildMetadata } from '@/lib/seo/metadata';
 import { JsonLd, buildBreadcrumbJsonLd, buildFaqJsonLd } from '@/lib/seo/json-ld';
 
 export const revalidate = 900;
+
+export async function generateStaticParams() {
+    const predictors = await listPredictorSitemapSlugs(200);
+    return predictors.map(({ slug }) => ({ slug }));
+}
 
 export async function generateMetadata({
     params,

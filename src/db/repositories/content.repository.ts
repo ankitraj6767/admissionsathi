@@ -338,9 +338,14 @@ export async function listResourcesForExam(
  */
 export async function listResourceSitemapSlugs(
     limit: number,
+    options: { type?: string; excludeTypes?: string[] } = {},
 ): Promise<(SlugRow & { type?: string })[]> {
     await connectToDatabase();
-    const rows = (await Resource.find(SITEMAP_FILTER as FilterQuery<ResourceDoc>)
+    const filter: FilterQuery<ResourceDoc> = { ...SITEMAP_FILTER };
+    if (options.type) filter.type = options.type;
+    if (options.excludeTypes?.length) filter.type = { $nin: options.excludeTypes };
+
+    const rows = (await Resource.find(filter)
         .select({ slug: 1, updatedAt: 1, type: 1 })
         .sort({ updatedAt: -1 })
         .limit(limit)

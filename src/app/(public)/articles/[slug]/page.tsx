@@ -4,9 +4,9 @@ import { notFound } from 'next/navigation';
 import { PageHeader } from '@/components/shared/page-header';
 import { CtaBanner, FaqAccordion, RichText, SectionCard } from '@/components/shared/content-blocks';
 import { Badge } from '@/components/ui/primitives';
-import { getArticleBySlug, listRelatedArticles } from '@/db/repositories/content.repository';
+import { getArticleBySlug, listArticleSitemapSlugs, listRelatedArticles } from '@/db/repositories/content.repository';
 import { toPlain } from '@/db/repositories/base.repository';
-import { incrementViewCount } from '@/services/analytics.service';
+import { ViewCountTracker } from '@/components/analytics/view-count-tracker';
 import { formatDate } from '@/lib/utils';
 import { buildMetadata } from '@/lib/seo/metadata';
 import {
@@ -17,6 +17,11 @@ import {
 } from '@/lib/seo/json-ld';
 
 export const revalidate = 900;
+
+export async function generateStaticParams() {
+    const articles = await listArticleSitemapSlugs(1_000);
+    return articles.map(({ slug }) => ({ slug }));
+}
 
 export async function generateMetadata({
     params,
@@ -46,12 +51,12 @@ export default async function ArticleDetailPage({ params }: { params: Promise<{ 
     if (!article) notFound();
 
     const related = toPlain(await listRelatedArticles(article, 4));
-    void incrementViewCount('article', String(article._id));
 
     const faqJson = buildFaqJsonLd((article.faqs ?? []).map((f) => ({ question: f.question, answer: f.answer })));
 
     return (
         <>
+            <ViewCountTracker entity="article" id={String(article._id)} slug={article.slug} />
             <JsonLd
                 data={[
                     buildArticleJsonLd({

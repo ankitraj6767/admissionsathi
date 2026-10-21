@@ -14,12 +14,18 @@ import { Badge } from '@/components/ui/primitives';
 import { SafeLink } from '@/components/shared/safe-link';
 import { ExternalLink } from 'lucide-react';
 import { getLoanProvider } from '@/services/finance.service';
+import { listLoanProviderSitemapSlugs } from '@/db/repositories/finance.repository';
 import { displayHost, safeWebUrl } from '@/lib/url';
 import { formatCompactINR } from '@/lib/utils';
 import { buildMetadata } from '@/lib/seo/metadata';
 import { JsonLd, buildBreadcrumbJsonLd, buildFaqJsonLd } from '@/lib/seo/json-ld';
 
 export const revalidate = 900;
+
+export async function generateStaticParams() {
+    const providers = await listLoanProviderSitemapSlugs(200);
+    return providers.map(({ slug }) => ({ providerSlug: slug }));
+}
 
 export async function generateMetadata({
     params,

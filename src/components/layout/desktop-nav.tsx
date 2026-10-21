@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Icon } from '@/components/ui/icon';
-import type { NavNode } from '@/services/navigation.service';
+import type { NavNode } from '@/types/navigation';
 
 function groupChildren(children: NavNode[]) {
     const groups = new Map<string, NavNode[]>();

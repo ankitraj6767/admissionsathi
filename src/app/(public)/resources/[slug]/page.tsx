@@ -1,7 +1,15 @@
 import type { Metadata } from 'next';
 import { ResourceDetail, buildResourceMetadataFor } from '@/components/resources/resource-detail';
+import { listResourceSitemapSlugs } from '@/db/repositories/content.repository';
 
 export const revalidate = 900;
+
+export async function generateStaticParams() {
+  const resources = await listResourceSitemapSlugs(500, {
+    excludeTypes: ['guide', 'previous_year_paper', 'mock_test', 'ebook', 'webinar'],
+  });
+  return resources.map(({ slug }) => ({ slug }));
+}
 
 export async function generateMetadata({
   params,

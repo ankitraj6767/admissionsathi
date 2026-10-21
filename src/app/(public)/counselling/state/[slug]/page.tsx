@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { PageHeader } from '@/components/shared/page-header';
 import { CtaBanner, KeyValueGrid, LinkTileGrid, SectionCard } from '@/components/shared/content-blocks';
 import { Badge, EmptyState, IconTile, RatingStars } from '@/components/ui/primitives';
-import { getStateBySlug, listCities, listStates } from '@/db/repositories/geo.repository';
+import { getStateBySlug, listCities, listStateSitemapSlugs, listStates } from '@/db/repositories/geo.repository';
 import { listCounsellorsForState } from '@/db/repositories/counsellor.repository';
 import { toPlain } from '@/db/repositories/base.repository';
 import { searchColleges } from '@/services/college.service';
@@ -12,6 +12,11 @@ import { buildMetadata } from '@/lib/seo/metadata';
 import { JsonLd, buildBreadcrumbJsonLd } from '@/lib/seo/json-ld';
 
 export const revalidate = 900;
+
+export async function generateStaticParams() {
+    const states = await listStateSitemapSlugs(100);
+    return states.map(({ slug }) => ({ slug }));
+}
 
 export async function generateMetadata({
     params,

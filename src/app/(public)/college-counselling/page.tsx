@@ -2,8 +2,6 @@ import type { Metadata } from 'next';
 import { CounsellingLanding } from '@/components/counselling/counselling-landing';
 import { buildMetadata } from '@/lib/seo/metadata';
 
-export const dynamic = 'force-dynamic';
-
 export const metadata: Metadata = buildMetadata({
     title: 'College Counselling — Shortlisting & Choice Filling Help',
     description:

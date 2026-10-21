@@ -48,11 +48,5 @@ export default auth((request) => {
 }) as unknown as (request: NextRequest) => NextResponse | Promise<NextResponse>;
 
 export const config = {
-    matcher: [
-        /*
-         * Run on everything except static assets, images and the analytics collector
-         * (which must stay as cheap as possible).
-         */
-        '/((?!api/analytics|_next/static|_next/image|favicon.ico|brand|resources|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|txt|xml|pdf)$).*)',
-    ],
+    matcher: ['/admin/:path*', '/dashboard/:path*', '/login', '/signup'],
 };

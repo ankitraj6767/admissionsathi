@@ -1,11 +1,11 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
+import { signOut } from 'next-auth/react';
 import { ChevronDown, LogOut, User } from 'lucide-react';
 import { cn, initials } from '@/lib/utils';
 import { Icon } from '@/components/ui/icon';
-import { signOutAction } from '@/actions/auth.actions';
+import { IntentLink as Link } from '@/components/ui/intent-link';
 
 export interface UserMenuActor {
     name: string;
@@ -22,7 +22,7 @@ const STUDENT_LINKS = [
     { label: 'Profile Settings', url: '/dashboard/profile', icon: 'Settings' },
 ];
 
-export function UserMenu({ actor }: { actor: UserMenuActor | null }) {
+export function UserMenu({ actor, isLoading = false }: { actor: UserMenuActor | null; isLoading?: boolean }) {
     const [open, setOpen] = useState(false);
     const ref = useRef<HTMLDivElement>(null);
 
@@ -35,6 +35,10 @@ export function UserMenu({ actor }: { actor: UserMenuActor | null }) {
     }, []);
 
     if (!actor) {
+        if (isLoading) {
+            return <span aria-hidden className="hidden h-10 w-[76px] animate-pulse rounded-[10px] border border-line bg-muted/50 lg:inline-flex" />;
+        }
+
         return (
             <Link
                 href="/login"
@@ -100,15 +104,16 @@ export function UserMenu({ actor }: { actor: UserMenuActor | null }) {
                         ))}
                     </div>
 
-                    <form action={signOutAction} className="border-t border-line pt-1">
+                    <div className="border-t border-line pt-1">
                         <button
-                            type="submit"
+                            type="button"
+                            onClick={() => void signOut({ redirectTo: '/' })}
                             className="flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-[13px] font-semibold text-red-alert hover:bg-red-50"
                         >
                             <LogOut className="h-4 w-4" aria-hidden />
                             Sign out
                         </button>
-                    </form>
+                    </div>
                 </div>
             ) : null}
         </div>

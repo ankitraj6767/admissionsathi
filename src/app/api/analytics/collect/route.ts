@@ -1,7 +1,8 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { z } from 'zod';
-import { recordAnalyticsEvent } from '@/services/analytics.service';
+import { incrementViewCount, recordAnalyticsEvent } from '@/services/analytics.service';
 import { getCurrentActor } from '@/lib/auth/session';
+import { ANALYTICS_EVENTS } from '@/lib/analytics/events';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,6 +29,17 @@ export async function POST(request: NextRequest) {
 
         const actor = await getCurrentActor().catch(() => null);
         await recordAnalyticsEvent({ ...parsed.data, userId: actor?.id });
+
+        const viewEntity =
+            parsed.data.name === ANALYTICS_EVENTS.collegeView ? 'college'
+                : parsed.data.name === ANALYTICS_EVENTS.courseView ? 'course'
+                    : parsed.data.name === ANALYTICS_EVENTS.examView ? 'exam'
+                        : parsed.data.name === ANALYTICS_EVENTS.articleView ? 'article'
+                            : null;
+
+        if (viewEntity && parsed.data.entityType === viewEntity && parsed.data.entityId) {
+            await incrementViewCount(viewEntity, parsed.data.entityId);
+        }
     } catch {
         /* never surface analytics failures to the client */
     }

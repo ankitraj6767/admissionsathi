@@ -10,12 +10,19 @@ import {
     SectionCard,
 } from '@/components/shared/content-blocks';
 import { Badge } from '@/components/ui/primitives';
+import { ScholarshipStatus } from '@/components/scholarships/scholarship-status';
 import { getScholarship } from '@/services/finance.service';
+import { listScholarshipSitemapSlugs } from '@/db/repositories/finance.repository';
 import { formatCompactINR, formatCurrency, formatDate } from '@/lib/utils';
 import { buildMetadata } from '@/lib/seo/metadata';
 import { JsonLd, buildBreadcrumbJsonLd, buildFaqJsonLd } from '@/lib/seo/json-ld';
 
 export const revalidate = 900;
+
+export async function generateStaticParams() {
+    const scholarships = await listScholarshipSitemapSlugs(500);
+    return scholarships.map(({ slug }) => ({ slug }));
+}
 
 export async function generateMetadata({
     params,
@@ -48,9 +55,6 @@ export default async function ScholarshipDetailPage({
     const faqJson = buildFaqJsonLd(
         (scholarship.faqs ?? []).map((f) => ({ question: f.question, answer: f.answer })),
     );
-    const isOpen =
-        !scholarship.applicationDeadline || new Date(scholarship.applicationDeadline).getTime() > Date.now();
-
     return (
         <>
             <JsonLd
@@ -106,7 +110,15 @@ export default async function ScholarshipDetailPage({
                                     { label: 'Deadline', value: formatDate(scholarship.applicationDeadline) },
                                     {
                                         label: 'Status',
-                                        value: isOpen ? <Badge tone="green">Open</Badge> : <Badge tone="neutral">Closed</Badge>,
+                                        value: (
+                                            <ScholarshipStatus
+                                                deadline={
+                                                    scholarship.applicationDeadline
+                                                        ? String(scholarship.applicationDeadline)
+                                                        : null
+                                                }
+                                            />
+                                        ),
                                     },
                                     { label: 'Minimum marks', value: scholarship.minPercentage ? `${scholarship.minPercentage}%` : '—' },
                                     {
