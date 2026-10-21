@@ -13,23 +13,20 @@ export function UtilityBar({ settings }: { settings: PublicSettings }) {
     const phone = readString(settings, 'contact.phone', '');
 
     return (
-        <div className="hidden border-b border-line bg-white lg:block">
+        <div className="border-b border-line bg-white">
             {/*
-              Three columns rather than `justify-between` with the clock inside the
-              left group: the outer columns each take an equal share of the leftover
-              space, which keeps the clock centred on the bar itself instead of
-              drifting with the length of the trust message.
+              Stack the information on mobile so every detail stays visible.
+              On wide desktops, equal outer columns keep the clock centred.
             */}
-            <div className="header-shell grid h-9 grid-cols-[1fr_auto_1fr] items-center gap-4 text-[11.5px] text-ink-soft">
-                <p className="flex min-w-0 items-center gap-1.5 font-medium">
+            <div className="header-shell grid grid-cols-1 items-center gap-1 py-2 text-[11px] text-ink-soft sm:text-[11.5px] xl:h-9 xl:grid-cols-[1fr_auto_1fr] xl:gap-4 xl:py-0">
+                <p className="flex min-w-0 items-center justify-center gap-1.5 text-center font-medium leading-4 xl:justify-start xl:text-left">
                     <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-navy-600" aria-hidden />
-                    <span className="truncate text-ink">{message}</span>
+                    <span className="min-w-0 break-words text-ink xl:truncate">{message}</span>
                 </p>
 
-                {/* Hidden on narrower desktops so the trust message keeps priority. */}
-                <LiveClock className="hidden items-center justify-center gap-1.5 xl:flex" />
+                <LiveClock className="flex items-center justify-center gap-1.5 whitespace-nowrap" />
 
-                <div className="flex items-center justify-end gap-5">
+                <div className="flex min-w-0 flex-wrap items-center justify-center gap-x-3 gap-y-1 xl:justify-end xl:gap-5">
                     {showApp ? (
                         <div className="flex items-center gap-2">
                             <Smartphone className="h-3.5 w-3.5 text-ink-soft" aria-hidden />
@@ -64,19 +61,19 @@ export function UtilityBar({ settings }: { settings: PublicSettings }) {
                     ) : null}
 
                     {email ? (
-                        <a href={`mailto:${email}`} className="flex items-center gap-1.5 hover:text-navy-700">
-                            <Mail className="h-3.5 w-3.5 text-navy-600" aria-hidden />
-                            <span>{email}</span>
+                        <a href={`mailto:${email}`} className="flex min-h-8 min-w-0 items-center gap-1.5 hover:text-navy-700 xl:min-h-0">
+                            <Mail className="h-3.5 w-3.5 shrink-0 text-navy-600" aria-hidden />
+                            <span className="min-w-0 break-words">{email}</span>
                         </a>
                     ) : null}
 
                     {phone ? (
                         <a
                             href={`tel:${phone.replace(/\s/g, '')}`}
-                            className="flex items-center gap-1.5 font-semibold text-ink hover:text-orange"
+                            className="flex min-h-8 items-center gap-1.5 whitespace-nowrap font-semibold text-ink hover:text-orange xl:min-h-0"
                             data-analytics="phone_click"
                         >
-                            <Phone className="h-3.5 w-3.5 text-green" aria-hidden />
+                            <Phone className="h-3.5 w-3.5 shrink-0 text-green" aria-hidden />
                             <span>{phone}</span>
                         </a>
                     ) : null}
