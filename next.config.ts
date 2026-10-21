@@ -73,7 +73,13 @@ const nextConfig: NextConfig = {
     },
     typedRoutes: false,
     async headers() {
-        return [{ source: '/(.*)', headers: securityHeaders }];
+        return [
+            { source: '/(.*)', headers: securityHeaders },
+            {
+                source: '/brand/page-banners/:path*',
+                headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],
+            },
+        ];
     },
 };
 

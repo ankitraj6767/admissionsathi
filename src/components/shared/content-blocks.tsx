@@ -1,9 +1,9 @@
 import Link from 'next/link';
-import Image from 'next/image';
 import { Card } from '@/components/ui/primitives';
 import { Icon } from '@/components/ui/icon';
 import { resolvePageBannerVisual } from '@/lib/page-banner-images';
 import { cn } from '@/lib/utils';
+import { PageBannerImage } from '@/components/shared/page-banner-image';
 
 /** Renders CMS rich text safely-scoped inside the `.prose-sathi` stylesheet. */
 export function RichText({ html, className }: { html?: string; className?: string }) {
@@ -150,11 +150,8 @@ export function CtaBanner({
             )}
             data-tone={tone}
         >
-            <Image
+            <PageBannerImage
                 src={bannerVisual.src}
-                alt=""
-                fill
-                quality={75}
                 sizes="(max-width: 768px) 100vw, 1320px"
                 className={cn('object-cover', bannerVisual.objectPosition)}
             />

@@ -8,6 +8,7 @@ import { safeWebUrl } from '@/lib/url';
 import { CollegeCardActions } from './college-card-actions';
 import { CollegeTabs } from './college-tabs';
 import { formatCompactINR } from '@/lib/utils';
+import { PageBannerImage } from '@/components/shared/page-banner-image';
 import type { CollegeDoc } from '@/db/models/college.model';
 
 export function CollegeHero({ college }: { college: CollegeDoc }) {
@@ -21,10 +22,10 @@ export function CollegeHero({ college }: { college: CollegeDoc }) {
     const websiteHref = safeWebUrl(college.contact?.website);
 
     return (
-        <section className="relative isolate overflow-hidden border-b border-white/30 text-white">
-            <Image src={banner} alt="" fill priority quality={75} sizes="100vw" className="object-cover object-[72%_32%] md:object-[center_28%]" />
+        <section className="relative isolate overflow-hidden border-b border-white/30 text-white lg:flex lg:min-h-[542px] lg:flex-col">
+            <PageBannerImage src={banner} priority sizes="100vw" className="object-[72%_32%] md:object-[center_28%]" />
 
-            <div className="relative shell py-6">
+            <div className="relative shell py-6 lg:flex lg:flex-1 lg:flex-col">
                 <Breadcrumbs
                     tone="dark"
                     className="banner-copy-on-image mb-4"
@@ -166,7 +167,9 @@ export function CollegeHero({ college }: { college: CollegeDoc }) {
                     </div>
                 </div>
 
-                <CollegeTabs base={base} />
+                <div className="lg:mt-auto">
+                    <CollegeTabs base={base} />
+                </div>
             </div>
         </section>
     );

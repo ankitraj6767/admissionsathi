@@ -1,8 +1,8 @@
 import Link from 'next/link';
-import Image from 'next/image';
 import { ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { resolvePageBannerVisual } from '@/lib/page-banner-images';
+import { PageBannerImage } from '@/components/shared/page-banner-image';
 import type { BreadcrumbItem } from '@/types/common';
 
 export function Breadcrumbs({
@@ -76,15 +76,14 @@ export function PageHeader({
 
     return (
         <section
-            className={cn('relative isolate min-h-[150px] overflow-hidden border-b border-white/30 md:min-h-[184px]', dark ? 'text-white' : 'text-navy-800')}
+            className={cn(
+                'relative isolate min-h-[150px] overflow-hidden border-b border-white/30 md:min-h-[184px] lg:flex lg:min-h-[442px] lg:flex-col lg:justify-center',
+                dark ? 'text-white' : 'text-navy-800',
+            )}
         >
-            <Image
+            <PageBannerImage
                 src={bannerVisual.src}
-                alt=""
-                fill
                 priority
-                quality={75}
-                sizes="100vw"
                 className={cn('object-cover', bannerVisual.objectPosition)}
             />
             <div className="shell relative py-6 md:py-8">
