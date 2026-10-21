@@ -15,7 +15,7 @@ export function UtilityBar({ settings }: { settings: PublicSettings }) {
     return (
         <div className="border-b border-line bg-white">
             {/*
-              Stack the information on mobile so every detail stays visible.
+              Stack the trust message and clock on mobile; contacts appear from md up.
               On wide desktops, equal outer columns keep the clock centred.
             */}
             <div className="header-shell grid grid-cols-1 items-center gap-1 py-2 text-[11px] text-ink-soft sm:text-[11.5px] xl:h-9 xl:grid-cols-[1fr_auto_1fr] xl:gap-4 xl:py-0">
@@ -26,7 +26,7 @@ export function UtilityBar({ settings }: { settings: PublicSettings }) {
 
                 <LiveClock className="flex items-center justify-center gap-1.5 whitespace-nowrap" />
 
-                <div className="flex min-w-0 flex-wrap items-center justify-center gap-x-3 gap-y-1 xl:justify-end xl:gap-5">
+                <div className={`${showApp ? 'flex' : 'hidden md:flex'} min-w-0 flex-wrap items-center justify-center gap-x-3 gap-y-1 xl:justify-end xl:gap-5`}>
                     {showApp ? (
                         <div className="flex items-center gap-2">
                             <Smartphone className="h-3.5 w-3.5 text-ink-soft" aria-hidden />
@@ -61,7 +61,7 @@ export function UtilityBar({ settings }: { settings: PublicSettings }) {
                     ) : null}
 
                     {email ? (
-                        <a href={`mailto:${email}`} className="flex min-h-8 min-w-0 items-center gap-1.5 hover:text-navy-700 xl:min-h-0">
+                        <a href={`mailto:${email}`} className="hidden min-h-8 min-w-0 items-center gap-1.5 hover:text-navy-700 md:flex xl:min-h-0">
                             <Mail className="h-3.5 w-3.5 shrink-0 text-navy-600" aria-hidden />
                             <span className="min-w-0 break-words">{email}</span>
                         </a>
@@ -70,7 +70,7 @@ export function UtilityBar({ settings }: { settings: PublicSettings }) {
                     {phone ? (
                         <a
                             href={`tel:${phone.replace(/\s/g, '')}`}
-                            className="flex min-h-8 items-center gap-1.5 whitespace-nowrap font-semibold text-ink hover:text-orange xl:min-h-0"
+                            className="hidden min-h-8 items-center gap-1.5 whitespace-nowrap font-semibold text-ink hover:text-orange md:flex xl:min-h-0"
                             data-analytics="phone_click"
                         >
                             <Phone className="h-3.5 w-3.5 shrink-0 text-green" aria-hidden />
