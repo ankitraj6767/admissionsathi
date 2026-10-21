@@ -303,7 +303,9 @@
     .banner-copy-panel :is(h1, h2, p, span, a),
     .banner-breadcrumb-panel.banner-breadcrumbs-on-photo :is(a, li > span) {
       color: #000 !important;
-      text-shadow: none;
+      -webkit-text-stroke: 0.65px #fffdf7;
+      paint-order: stroke fill;
+      text-shadow: 0 0 3px #fffdf7, 0 0 6px rgb(255 253 247 / 0.9);
     }
 
     .banner-breadcrumb-panel {
