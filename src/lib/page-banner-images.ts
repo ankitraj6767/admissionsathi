@@ -8,14 +8,14 @@ export type PageBannerContext = {
 };
 
 const BANNER_IMAGES = {
-    campus: '/brand/page-banners/campus.webp',
-    courses: '/brand/page-banners/courses.webp',
-    exams: '/brand/page-banners/exams.webp',
-    counselling: '/brand/page-banners/counselling.webp',
-    finance: '/brand/page-banners/finance.webp',
-    scholarships: '/brand/page-banners/scholarships.webp',
-    editorial: '/brand/page-banners/editorial.webp',
-    tools: '/brand/page-banners/tools.webp',
+    campus: '/brand/page-banners/campus-natural.webp',
+    courses: '/brand/page-banners/courses-natural.webp',
+    exams: '/brand/page-banners/exams-natural.webp',
+    counselling: '/brand/page-banners/counselling-natural.webp',
+    finance: '/brand/page-banners/finance-natural.webp',
+    scholarships: '/brand/page-banners/scholarships-natural.webp',
+    editorial: '/brand/page-banners/editorial-natural.webp',
+    tools: '/brand/page-banners/tools-natural.webp',
 } as const;
 
 type BannerTheme = keyof typeof BANNER_IMAGES;

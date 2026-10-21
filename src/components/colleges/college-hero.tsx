@@ -17,7 +17,7 @@ export function CollegeHero({ college }: { college: CollegeDoc }) {
         college.banner?.url.startsWith('https://images.unsplash.com/photo-') &&
         !college.banner.mediaId &&
         college.banner.alt === `${college.name} campus`;
-    const banner = college.banner?.url && !seededStockBanner ? college.banner.url : '/brand/page-banners/campus.webp';
+    const banner = college.banner?.url && !seededStockBanner ? college.banner.url : '/brand/page-banners/campus-natural.webp';
     const websiteHref = safeWebUrl(college.contact?.website);
 
     return (
