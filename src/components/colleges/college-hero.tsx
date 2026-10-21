@@ -13,29 +13,20 @@ import type { CollegeDoc } from '@/db/models/college.model';
 export function CollegeHero({ college }: { college: CollegeDoc }) {
     const base = `/colleges/${college.slug}`;
 
-    const banner = college.banner?.url;
+    const seededStockBanner =
+        college.banner?.url.startsWith('https://images.unsplash.com/photo-') &&
+        !college.banner.mediaId &&
+        college.banner.alt === `${college.name} campus`;
+    const banner = college.banner?.url && !seededStockBanner ? college.banner.url : '/brand/page-banners/campus.webp';
     const websiteHref = safeWebUrl(college.contact?.website);
 
     return (
-        <section className="relative border-b border-navy-900/40 bg-navy-800 text-white">
-            {/*
-              Banner is decorative: the heading already names the college, so an
-              empty alt keeps it out of the accessibility tree. The photo is left
-              unobscured; text shadows and the local action-panel surface provide
-              contrast without tinting the full banner.
-            */}
-            {banner ? (
-                <Image
-                    src={banner}
-                    alt=""
-                    fill
-                    priority
-                    sizes="100vw"
-                    className="object-cover"
-                />
-            ) : null}
+        <section className="relative isolate overflow-hidden border-b border-navy-900 bg-navy-900 text-white">
+            <Image src={banner} alt="" fill priority quality={75} sizes="100vw" className="object-cover object-[72%_32%] md:object-[center_28%]" />
+            <div aria-hidden className="absolute inset-0 bg-gradient-to-r from-navy-900/90 via-navy-900/72 to-navy-900/25" />
+            <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-navy-900/55 via-transparent to-navy-900/10" />
 
-            <div className="relative shell py-6 [text-shadow:0_1px_3px_rgb(0_0_0/0.9)]">
+            <div className="relative shell py-6">
                 <Breadcrumbs
                     tone="dark"
                     className="mb-4"

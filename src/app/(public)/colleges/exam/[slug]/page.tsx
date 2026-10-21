@@ -74,7 +74,7 @@ export default async function CollegesByExamPage({
                 breadcrumbs={[
                     { label: 'Home', href: '/' },
                     { label: 'Colleges', href: '/colleges' },
-                    { label: `${exam.shortName} colleges` },
+                    { label: `${exam.shortName} colleges`, href: `/colleges/exam/${exam.slug}` },
                 ]}
                 actions={
                     <>

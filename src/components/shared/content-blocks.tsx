@@ -1,6 +1,8 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { Card } from '@/components/ui/primitives';
 import { Icon } from '@/components/ui/icon';
+import { resolvePageBannerVisual } from '@/lib/page-banner-images';
 import { cn } from '@/lib/utils';
 
 /** Renders CMS rich text safely-scoped inside the `.prose-sathi` stylesheet. */
@@ -139,26 +141,35 @@ export function CtaBanner({
     ctaUrl: string;
     tone?: 'navy' | 'orange' | 'teal';
 }) {
-    const tones = {
-        navy: 'bg-navy-800 text-white',
-        orange: 'bg-orange text-white',
-        teal: 'bg-teal text-white',
+    const overlays = {
+        navy: 'from-navy-900/95 via-navy-900/80 to-navy-900/25',
+        orange: 'from-orange-700/95 via-orange-700/78 to-orange-900/25',
+        teal: 'from-[#075a56]/95 via-[#075a56]/78 to-[#073b3a]/25',
     } as const;
+    const bannerVisual = resolvePageBannerVisual({ title, description });
 
     return (
         <section
             className={cn(
-                'flex flex-col items-start justify-between gap-3 rounded-panel p-4 md:flex-row md:items-center md:p-5',
-                tones[tone],
+                'relative isolate flex flex-col items-start justify-between gap-3 overflow-hidden rounded-panel border border-white/10 p-4 text-white shadow-card md:flex-row md:items-center md:p-5',
             )}
         >
-            <div>
-                <h2 className="text-[15px] font-extrabold">{title}</h2>
-                {description ? <p className="mt-1 text-[12.5px] opacity-80">{description}</p> : null}
+            <Image
+                src={bannerVisual.src}
+                alt=""
+                fill
+                quality={75}
+                sizes="(max-width: 768px) 100vw, 1320px"
+                className={cn('object-cover', bannerVisual.objectPosition)}
+            />
+            <div aria-hidden className={cn('absolute inset-0 bg-gradient-to-r', overlays[tone])} />
+            <div className="relative z-10 max-w-3xl">
+                <h2 className="text-[15px] font-extrabold tracking-[-0.01em] md:text-[16px]">{title}</h2>
+                {description ? <p className="mt-1 text-[12.5px] leading-relaxed text-white/80">{description}</p> : null}
             </div>
             <Link
                 href={ctaUrl}
-                className="inline-flex h-10 shrink-0 items-center rounded-[10px] bg-white px-4 text-[12.5px] font-bold text-navy-800 transition-transform hover:-translate-y-0.5"
+                className="relative z-10 inline-flex h-10 shrink-0 items-center rounded-[10px] bg-white px-4 text-[12.5px] font-bold text-navy-800 shadow-[0_8px_20px_-12px_rgba(0,0,0,0.7)] transition-transform hover:-translate-y-0.5"
             >
                 {ctaLabel}
             </Link>

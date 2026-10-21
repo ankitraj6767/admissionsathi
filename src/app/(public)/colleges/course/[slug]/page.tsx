@@ -68,7 +68,7 @@ export default async function CollegesByCoursePage({
                 breadcrumbs={[
                     { label: 'Home', href: '/' },
                     { label: 'Colleges', href: '/colleges' },
-                    { label: `${course.shortName ?? course.name} colleges` },
+                    { label: `${course.shortName ?? course.name} colleges`, href: `/colleges/course/${course.slug}` },
                 ]}
                 actions={
                     <Link

@@ -1,6 +1,8 @@
 import Link from 'next/link';
+import Image from 'next/image';
 import { ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { resolvePageBannerVisual } from '@/lib/page-banner-images';
 import type { BreadcrumbItem } from '@/types/common';
 
 export function Breadcrumbs({
@@ -70,15 +72,33 @@ export function PageHeader({
     children?: React.ReactNode;
 }) {
     const dark = tone === 'navy';
+    const bannerVisual = resolvePageBannerVisual({ title, description, eyebrow, breadcrumbs });
 
     return (
         <section
-            className={cn(
-                'border-b',
-                dark ? 'border-navy-900/40 bg-navy-800 text-white' : 'border-line bg-white',
-            )}
+            className={cn('relative isolate min-h-[150px] overflow-hidden border-b md:min-h-[184px]', dark ? 'border-navy-900 bg-navy-900 text-white' : 'border-line bg-white text-navy-800')}
         >
-            <div className="shell py-6 md:py-8">
+            <Image
+                src={bannerVisual.src}
+                alt=""
+                fill
+                priority
+                quality={75}
+                sizes="100vw"
+                className={cn('object-cover', bannerVisual.objectPosition)}
+            />
+            <div
+                aria-hidden
+                className={cn(
+                    'absolute inset-0',
+                    dark
+                        ? 'bg-gradient-to-r from-navy-900/95 via-navy-900/78 to-navy-900/20'
+                        : 'bg-gradient-to-r from-white/98 via-white/88 to-white/25',
+                )}
+            />
+            <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-black/10" />
+
+            <div className="shell relative py-6 md:py-8">
                 {breadcrumbs?.length ? (
                     <Breadcrumbs items={breadcrumbs} tone={dark ? 'dark' : 'light'} className="mb-3" />
                 ) : null}
@@ -89,7 +109,7 @@ export function PageHeader({
                             <p
                                 className={cn(
                                     'mb-1 text-[10.5px] font-bold uppercase tracking-[0.14em]',
-                                    dark ? 'text-orange-200' : 'text-navy-600',
+                                    dark ? 'text-orange-200' : 'text-orange-700',
                                 )}
                             >
                                 {eyebrow}
@@ -97,7 +117,7 @@ export function PageHeader({
                         ) : null}
                         <h1
                             className={cn(
-                                'font-display text-[22px] font-extrabold leading-tight md:text-[28px]',
+                                'max-w-4xl font-display text-[25px] font-extrabold leading-[1.12] tracking-[-0.02em] md:text-[32px] lg:text-[36px]',
                                 dark ? 'text-white' : 'text-navy-800',
                             )}
                         >
@@ -106,8 +126,8 @@ export function PageHeader({
                         {description ? (
                             <p
                                 className={cn(
-                                    'mt-2 max-w-3xl text-[13px] leading-relaxed',
-                                    dark ? 'text-white/75' : 'text-ink-soft',
+                                    'mt-2 max-w-3xl text-[13px] leading-relaxed md:text-[13.5px]',
+                                    dark ? 'text-white/80' : 'text-ink-soft',
                                 )}
                             >
                                 {description}
