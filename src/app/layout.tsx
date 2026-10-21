@@ -1,23 +1,24 @@
 import type { Metadata, Viewport } from 'next';
-import { Inter, Manrope } from 'next/font/google';
+import localFont from 'next/font/local';
 import './globals.css';
 import { siteConfig } from '@/config/site';
 import { AnalyticsProvider } from '@/components/analytics/analytics-provider';
 import { getSettings, readString } from '@/services/settings.service';
 import { resolveBranding } from '@/lib/branding';
 
-const inter = Inter({
-    subsets: ['latin'],
+const inter = localFont({
+    src: './fonts/inter-latin.woff2',
     display: 'swap',
     variable: '--font-inter',
     preload: true,
+    weight: '100 900',
 });
 
-const manrope = Manrope({
-    subsets: ['latin'],
+const manrope = localFont({
+    src: './fonts/manrope-latin.woff2',
     display: 'swap',
     variable: '--font-manrope',
-    weight: ['600', '700', '800'],
+    weight: '200 800',
 });
 
 export async function generateMetadata(): Promise<Metadata> {
